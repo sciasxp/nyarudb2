@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import NyaruDB2
 
 final class NyaruDB2Tests: XCTestCase {

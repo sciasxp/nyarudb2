@@ -12,13 +12,18 @@ public class ShardManager {
     private let baseURL: URL
     private let compressionMethod: CompressionMethod
     public let fileProtectionType: FileProtectionType
-    
 
-    public init(baseURL: URL, compressionMethod: CompressionMethod = .none, fileProtectionType: FileProtectionType = .none) {
+    public init(
+        baseURL: URL,
+        compressionMethod: CompressionMethod = .none,
+        fileProtectionType: FileProtectionType = .none
+    ) {
         self.baseURL = baseURL
-        
-        try? FileManager.default.createDirectory(at: baseURL,
-                                                   withIntermediateDirectories: true)
+
+        try? FileManager.default.createDirectory(
+            at: baseURL,
+            withIntermediateDirectories: true
+        )
         self.compressionMethod = compressionMethod
         self.fileProtectionType = fileProtectionType
     }
@@ -29,8 +34,13 @@ public class ShardManager {
         }
 
         let shardURL = baseURL.appendingPathComponent("\(id).shard")
-        let shard = Shard(id: id, url: shardURL, compressionMethod: compressionMethod, fileProtectionType: fileProtectionType)
-        
+        let shard = Shard(
+            id: id,
+            url: shardURL,
+            compressionMethod: compressionMethod,
+            fileProtectionType: fileProtectionType
+        )
+
         shards[id] = shard
 
         try saveMetadata(for: shard)
@@ -47,13 +57,22 @@ public class ShardManager {
 
     public func allShardInfo() -> [ShardMetadataInfo] {
         shards.values.map { shard in
-            ShardMetadataInfo(id: shard.id, url: shard.url, metadata: shard.metadata)
+            ShardMetadataInfo(
+                id: shard.id,
+                url: shard.url,
+                metadata: shard.metadata
+            )
         }
     }
 
     public func loadShards() {
         shards.removeAll()
-        guard let files = try? FileManager.default.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: nil) else { return }
+        guard
+            let files = try? FileManager.default.contentsOfDirectory(
+                at: baseURL,
+                includingPropertiesForKeys: nil
+            )
+        else { return }
         for url in files where url.pathExtension == "shard" {
             let id = url.deletingPathExtension().lastPathComponent
             let metadata = (try? loadMetadata(from: url)) ?? ShardMetadata()
