@@ -33,7 +33,8 @@ public class ShardManager {
             throw ShardManagerError.shardAlreadyExists(shardID: id)
         }
 
-        let shardURL = baseURL.appendingPathComponent("\(id).shard")
+        let shardURL = baseURL.appendingPathComponent("\(id).nyaru")
+        
         let shard = Shard(
             id: id,
             url: shardURL,
@@ -42,6 +43,8 @@ public class ShardManager {
         )
 
         shards[id] = shard
+        
+        try shard.saveDocuments([] as [String])
 
         try saveMetadata(for: shard)
 

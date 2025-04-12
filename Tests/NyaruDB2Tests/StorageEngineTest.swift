@@ -1,56 +1,63 @@
 import XCTest
-
 @testable import NyaruDB2
 
+struct TestModel: Codable, Equatable {
+    let id: Int
+    let name: String
+    let category: String?  // Usado para particionamento, se necessário
+}
+
 final class StorageEngineTests: XCTestCase {
-
-    struct TestModel: Codable, Equatable {
-        let id: Int
-        let name: String
-        // Se você for usar particionamento, inclua o campo da shardKey, por exemplo:
-        let category: String?
-    }
-
-    func testInsertAndFetchWithoutPartition() async throws {
-        // Sem particionamento: shardKey nil
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("StorageEngineTest")
-        try? FileManager.default.removeItem(at: tempURL)
-        let storage = StorageEngine(
-            path: tempURL.path,
-            shardKey: nil,
-            compressionMethod: .none
-        )
-
-        let model = TestModel(id: 1, name: "Exemplo", category: nil)
+    
+    func testInsertDocumentWithoutPartitionAndIndex() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        
+        // Inicializa o StorageEngine sem particionamento.
+        let storage = StorageEngine(path: tempDirectory.path, shardKey: nil, compressionMethod: .none)
+        let model = TestModel(id: 1, name: "Test", category: nil)
+        
         try await storage.insertDocument(model, collection: "TestCollection")
-
-        // Caso tenha um método de fetch implementado, você pode testar aqui
-        // Por exemplo: let fetched = try await storage.fetchDocuments(from: "TestCollection")
-        // XCTAssertEqual(fetched.count, 1)
+        
+        // O StorageEngine utiliza o shard "default" quando não há shardKey.
+        let fileURL = tempDirectory
+                        .appendingPathComponent("TestCollection", isDirectory: true)
+                        .appendingPathComponent("default.nyaru")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path),
+                      "O arquivo do shard 'default.nyaru' deve existir.")
+        
+        // Tenta ler e decodificar os documentos armazenados.
+        let data = try Data(contentsOf: fileURL)
+        let decoded = try JSONDecoder().decode([TestModel].self, from: data)
+        XCTAssertEqual(decoded.count, 1)
+        XCTAssertEqual(decoded.first, model)
     }
-
-    func testInsertAndFetchWithPartition() async throws {
-        // Com particionamento: usando o campo "category" como chave
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("StorageEngineTestPartition")
-        try? FileManager.default.removeItem(at: tempURL)
-        let storage = StorageEngine(
-            path: tempURL.path,
-            shardKey: "category",
-            compressionMethod: .lzfse
-        )
-
-        let model1 = TestModel(id: 1, name: "Item 1", category: "A")
-        let model2 = TestModel(id: 2, name: "Item 2", category: "B")
-        let model3 = TestModel(id: 3, name: "Item 3", category: "A")
-
-        try await storage.insertDocument(model1, collection: "PartitionTest")
-        try await storage.insertDocument(model2, collection: "PartitionTest")
-        try await storage.insertDocument(model3, collection: "PartitionTest")
-
-        // Aqui você pode implementar ou simular um método de busca por shard, por exemplo:
-        // let itemsA: [TestModel] = try await storage.fetchDocuments(whereShardValue: "A", collection: "PartitionTest")
-        // XCTAssertEqual(itemsA.count, 2)
+    
+    func testInsertDocumentWithPartitionAndIndex() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        
+        // Inicializa StorageEngine com particionamento usando "category" e indexando pelo campo "name".
+        let storage = StorageEngine(path: tempDirectory.path, shardKey: "category", compressionMethod: .none)
+        
+        let modelA = TestModel(id: 1, name: "Alice", category: "A")
+        let modelB = TestModel(id: 2, name: "Bob", category: "B")
+        let modelA2 = TestModel(id: 3, name: "Alice", category: "A")
+        
+        try await storage.insertDocument(modelA, collection: "TestCollection", indexField: "name")
+        try await storage.insertDocument(modelB, collection: "TestCollection", indexField: "name")
+        try await storage.insertDocument(modelA2, collection: "TestCollection", indexField: "name")
+        
+        let collectionURL = tempDirectory.appendingPathComponent("TestCollection", isDirectory: true)
+        let fileA = collectionURL.appendingPathComponent("A.nyaru")
+        let fileB = collectionURL.appendingPathComponent("B.nyaru")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileA.path),
+                      "O arquivo do shard 'A.nyaru' deve existir.")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileB.path),
+                      "O arquivo do shard 'B.nyaru' deve existir.")
+        
+        // Aqui a verificação do índice pode ser feita consultando o IndexManager,
+        // mas como o StorageEngine atual não expõe um método de consulta, a validação de índice
+        // ocorrerá indiretamente (sem erro durante a inserção, assume-se que o índice foi atualizado).
     }
 }

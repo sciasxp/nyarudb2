@@ -21,14 +21,14 @@ public class Shard {
     public let url: URL
     public private(set) var metadata: ShardMetadata
     public let compressionMethod: CompressionMethod
-    public let fileProtectionType: FileProtectionType?
+    public let fileProtectionType: FileProtectionType
 
     public init(
         id: String,
         url: URL,
         metadata: ShardMetadata = .init(),
         compressionMethod: CompressionMethod = .none,
-        fileProtectionType: FileProtectionType? = nil
+        fileProtectionType: FileProtectionType = .none
     ) {
         self.id = id
         self.url = url
@@ -51,12 +51,10 @@ public class Shard {
         let compressedData = try compressData(data, method: compressionMethod)
         try compressedData.write(to: url, options: .atomic)
 
-        if let protection = fileProtectionType {
-            try FileManager.default.setAttributes(
-                [.protectionKey: protection],
-                ofItemAtPath: url.path
-            )
-        }
+        try FileManager.default.setAttributes(
+            [.protectionKey: fileProtectionType],
+            ofItemAtPath: url.path
+        )
 
         metadata.documentCount = documents.count
         metadata.updatedAt = Date()
