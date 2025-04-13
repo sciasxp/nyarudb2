@@ -115,7 +115,7 @@ public class ShardManager {
     }
 }
 
-public struct ShardMetadataInfo {
+public struct ShardMetadataInfo: Codable  {
     public let id: String
     public let url: URL
     public let metadata: ShardMetadata

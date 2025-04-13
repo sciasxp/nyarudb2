@@ -313,6 +313,11 @@ public actor StorageEngine {
         // Retorna os nomes dos diretórios
         return collections.map { $0.lastPathComponent }
     }
+    
+    public func getShardManagers(for collection: String) async throws -> [Shard] {
+        guard let shardManager = activeShardManagers[collection] else { return [] }
+        return shardManager.allShards()
+    }
 
     // MARK: - Métodos auxiliares
     private func extractValue(
