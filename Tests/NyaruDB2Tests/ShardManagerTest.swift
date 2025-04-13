@@ -4,7 +4,7 @@ import XCTest
 
 final class ShardManagerTests: XCTestCase {
 
-    func testShardCreation() throws {
+    func testShardCreation() async throws {
         let baseURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("ShardManagerTest")
         // Limpa a pasta, se existir
@@ -19,7 +19,7 @@ final class ShardManagerTests: XCTestCase {
             compressionMethod: .none,
             fileProtectionType: .none
         )
-        let shard = try manager.createShard(withID: "testShard")
+        let shard = try await manager.createShard(withID: "testShard")
 
         XCTAssertEqual(shard.id, "testShard", "O ID do shard deve corresponder")
         XCTAssertTrue(FileManager.default.fileExists(atPath: shard.url.path))

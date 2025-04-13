@@ -5,7 +5,7 @@ import XCTest
 final class NyaruDB2Tests: XCTestCase {
     func testExample() throws {
         // Teste básico
-        let db = NyaruDB2()
+        let db = try NyaruDB2()
         XCTAssertNotNil(db.storage)
     }
 }

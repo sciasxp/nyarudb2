@@ -14,7 +14,7 @@ final class StorageEngineTests: XCTestCase {
         try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
         
         // Inicializa o StorageEngine sem particionamento.
-        let storage = StorageEngine(path: tempDirectory.path, shardKey: nil, compressionMethod: .none)
+        let storage = try StorageEngine(path: tempDirectory.path, shardKey: nil, compressionMethod: .none)
         let model = TestModel(id: 1, name: "Test", category: nil)
         
         try await storage.insertDocument(model, collection: "TestCollection")
@@ -38,7 +38,7 @@ final class StorageEngineTests: XCTestCase {
         try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
         
         // Inicializa StorageEngine com particionamento usando "category" e indexando pelo campo "name".
-        let storage = StorageEngine(path: tempDirectory.path, shardKey: "category", compressionMethod: .none)
+        let storage = try StorageEngine(path: tempDirectory.path, shardKey: "category", compressionMethod: .none, fileProtectionType: FileProtectionType.none)
         
         let modelA = TestModel(id: 1, name: "Alice", category: "A")
         let modelB = TestModel(id: 2, name: "Bob", category: "B")
