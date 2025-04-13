@@ -192,6 +192,107 @@ public actor StorageEngine {
         }
     }
 
+    public func bulkInsertDocuments<T: Codable>(
+        _ documents: [T],
+        collection: String,
+        indexField: String? = nil
+    ) async throws {
+        // Se não houver documentos, simplesmente retorne
+        guard !documents.isEmpty else { return }
+
+        // Obtém ou cria o ShardManager para a coleção
+        let shardManager = try await getOrCreateShardManager(for: collection)
+
+        // Para atualizar os índices, vamos assegurar que o IndexManager exista para a coleção,
+        // se indexField for especificado
+        if let indexField = indexField, indexManagers[collection] == nil {
+            let newManager = IndexManager()
+            newManager.createIndex(for: indexField)
+            indexManagers[collection] = newManager
+        }
+
+        // Agrupa os documentos (junto com seus jsonData) pelo valor da shardKey.
+        // Se não houver shardKey, utiliza "default" como chave.
+        var groups = [String: [(document: T, jsonData: Data)]]()
+        for document in documents {
+            let jsonData = try JSONEncoder().encode(document)
+
+            let partitionValue =
+                try shardKey.flatMap { key in
+                    try extractValue(from: jsonData, key: key)
+                } ?? "default"
+
+            groups[partitionValue, default: []].append((document, jsonData))
+
+            // Se há um campo de índice, atualiza o índice para cada documento.
+            // Aqui usamos a função extractValue com forIndex: true para obter o valor do índice.
+            if let indexField = indexField {
+                let indexKey = try extractValue(
+                    from: jsonData,
+                    key: indexField,
+                    forIndex: true
+                )
+                let indexManager = indexManagers[
+                    collection,
+                    default: {
+                        let newManager = IndexManager()
+                        newManager.createIndex(for: indexField)
+                        indexManagers[collection] = newManager
+                        return newManager
+                    }()
+                ]
+                indexManager.insert(
+                    index: indexField,
+                    key: indexKey,
+                    data: jsonData
+                )
+                indexManagers[collection] = indexManager
+            }
+        }
+
+        // Para cada grupo (shard) carregue os documentos existentes, anexe os novos e salve uma única vez.
+        for (shardId, groupDocuments) in groups {
+            // Obtém ou cria o shard específico para a partição
+            let shard = try await shardManager.getOrCreateShard(id: shardId)
+            var existingDocs: [T] = try await shard.loadDocuments()
+
+            // Adiciona todos os documentos do grupo
+            for (doc, _) in groupDocuments {
+                existingDocs.append(doc)
+            }
+
+            // Salva o conjunto atualizado de documentos no shard
+            try await shard.saveDocuments(existingDocs)
+        }
+    }
+    
+    public func countDocuments(in collection: String) async throws -> Int {
+        // Obtém o gerenciador de shards para a coleção
+        guard let shardManager = activeShardManagers[collection] else {
+            return 0
+        }
+        // Soma os documentCount de cada shard
+        let shards = shardManager.allShards()
+        var totalCount = 0
+        for shard in shards {
+            totalCount += shard.metadata.documentCount
+        }
+        return totalCount
+    }
+    
+    public func dropCollection(_ collection: String) async throws {
+        // Remove o diretório da coleção
+        let collectionURL = baseURL.appendingPathComponent(collection, isDirectory: true)
+        try FileManager.default.removeItem(at: collectionURL)
+        
+        // Remove a coleção dos gerenciadores ativos
+        activeShardManagers.removeValue(forKey: collection)
+        indexManagers.removeValue(forKey: collection)
+    }
+
+    
+
+
     // MARK: - Métodos auxiliares
     private func extractValue(
         from data: Data,
