@@ -56,7 +56,7 @@ public actor StorageEngine {
 
         // 4. Indexação otimizada
         if let indexField = indexField {
-            let key = try extractValue(from: jsonData, key: indexField)
+            let key = try extractValue(from: jsonData, key: indexField, forIndex: true)
 
             let indexManager = indexManagers[
                 collection,
@@ -69,16 +69,28 @@ public actor StorageEngine {
     }
 
     // MARK: - Métodos auxiliares
-    private func extractValue(from data: Data, key: String) throws -> String {
-       // Tenta converter os dados para um dicionário genérico
-        guard let jsonObject = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
+    private func extractValue(
+        from data: Data,
+        key: String,
+        forIndex: Bool = false
+    ) throws -> String {
+        // Converte os dados para um dicionário genérico
+        guard
+            let jsonObject = try JSONSerialization.jsonObject(
+                with: data,
+                options: []
+            ) as? [String: Any]
+        else {
             throw StorageError.invalidDocument
         }
-        // Se não encontrar a chave, lança erro
+        // Se não encontrar a chave, lança o erro apropriado
         guard let value = jsonObject[key] else {
+            if forIndex {
+                throw StorageError.indexKeyNotFound(key)
+            }
             throw StorageError.partitionKeyNotFound(key)
         }
-        // Converte o valor para String, independentemente do tipo original
+        // Converte o valor para String, independente do tipo original
         return String(describing: value)
     }
 
@@ -120,9 +132,9 @@ public actor StorageEngine {
                 return newManager
             }()
 
-        let key = try extractValue(from: jsonData, key: indexField)
+        let key = try extractValue(from: jsonData, key: indexField, forIndex: true)
         indexManager.insert(index: indexField, key: key, data: jsonData)
-        
+
     }
 }
 
