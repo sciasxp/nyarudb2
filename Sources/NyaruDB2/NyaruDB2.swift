@@ -68,6 +68,10 @@ public struct NyaruDB2 {
     public func fetchLazy<T: Codable>(from collection: String) async -> AsyncThrowingStream<T, Error> {
         await storage.fetchDocumentsLazy(from: collection)
     }
+
+    public func query<T: Codable>(from collection: String) -> Query<T> {
+        return Query<T>(collection: collection)
+    }
     
     // MARK: - Operações Administrativas
     
