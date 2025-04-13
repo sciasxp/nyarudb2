@@ -1,9 +1,13 @@
 import Foundation
+import Compression
+// import zlib
 
 /// Uma árvore B autobalanceada para indexar dados.
 /// Essa implementação mapeia chaves do tipo Key para arrays de Data.
-public class BTreeIndex<Key: Comparable> {
+/// Agora implementada como um actor para garantir segurança concorrente.
+public actor BTreeIndex<Key: Comparable> {
     
+    // MARK: - Definição Interna do Nó
     private class Node {
         var keys: [Key] = []
         var values: [[Data]] = []
@@ -24,6 +28,8 @@ public class BTreeIndex<Key: Comparable> {
         self.t = minimumDegree
         self.root = Node(isLeaf: true)
     }
+    
+    // MARK: - Operações Básicas
     
     public func search(key: Key) -> [Data]? {
         return search(in: root, key: key)
@@ -49,7 +55,6 @@ public class BTreeIndex<Key: Comparable> {
             insertDataIfExists(in: root, key: key, data: data)
             return
         }
-        
         if root.keys.count == (2 * t - 1) {
             let s = Node(isLeaf: false)
             s.children.append(root)
@@ -80,7 +85,6 @@ public class BTreeIndex<Key: Comparable> {
     
     private func insertNonFull(node: Node, key: Key, data: Data) {
         var i = node.keys.count - 1
-        
         if node.isLeaf {
             while i >= 0 && key < node.keys[i] {
                 i -= 1
@@ -107,7 +111,6 @@ public class BTreeIndex<Key: Comparable> {
         let newNode = Node(isLeaf: child.isLeaf)
         newNode.keys = Array(child.keys[t...])
         newNode.values = Array(child.values[t...])
-        
         if !child.isLeaf {
             newNode.children = Array(child.children[t...])
             child.children.removeSubrange(t..<child.children.count)
@@ -116,6 +119,7 @@ public class BTreeIndex<Key: Comparable> {
         child.values.removeSubrange(t..<child.values.count)
         
         parent.children.insert(newNode, at: index + 1)
+        // Seleciona a chave mediana para subir para o pai
         let medianKey = child.keys[t - 1]
         let medianValue = child.values[t - 1]
         parent.keys.insert(medianKey, at: index)
@@ -123,5 +127,38 @@ public class BTreeIndex<Key: Comparable> {
         
         child.keys.remove(at: t - 1)
         child.values.remove(at: t - 1)
+    }
+    
+    // MARK: - Paginação / Lazy Loading de Dados
+    
+    /// Executa uma travessia in-order e retorna todos os Data armazenados de forma ordenada.
+    public func inOrder() -> [Data] {
+        var result: [Data] = []
+        inOrderTraversal(node: root, result: &result)
+        return result
+    }
+    
+    private func inOrderTraversal(node: Node, result: inout [Data]) {
+        if node.isLeaf {
+            for valueGroup in node.values {
+                result.append(contentsOf: valueGroup)
+            }
+        } else {
+            for i in 0..<node.keys.count {
+                inOrderTraversal(node: node.children[i], result: &result)
+                result.append(contentsOf: node.values[i])
+            }
+            if let lastChild = node.children.last {
+                inOrderTraversal(node: lastChild, result: &result)
+            }
+        }
+    }
+    
+    /// Retorna uma "página" dos dados – ou seja, uma parte dos Data em ordem – com base em um offset e limite.
+    public func page(offset: Int, limit: Int) -> [Data] {
+        let allData = inOrder()
+        guard offset < allData.count else { return [] }
+        let end = min(allData.count, offset + limit)
+        return Array(allData[offset..<end])
     }
 }

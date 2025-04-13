@@ -67,7 +67,7 @@ public actor StorageEngine {
                 default: IndexManager()
             ]
             indexManager.createIndex(for: indexField)
-            indexManager.insert(index: indexField, key: key, data: jsonData)
+            await indexManager.insert(index: indexField, key: key, data: jsonData)
             indexManagers[collection] = indexManager
         }
     }
@@ -216,7 +216,7 @@ public actor StorageEngine {
 
             // Atualiza a entrada no índice – a estratégia mais simples aqui é inserir a nova versão,
             // assumindo que se o índice já possui essa chave, o método de insert adicionará o novo dado.
-            indexManager.insert(index: indexField, key: key, data: jsonData)
+            await indexManager.insert(index: indexField, key: key, data: jsonData)
             indexManagers[collection] = indexManager
         }
     }
@@ -270,7 +270,7 @@ public actor StorageEngine {
                         return newManager
                     }()
                 ]
-                indexManager.insert(
+                await indexManager.insert(
                     index: indexField,
                     key: indexKey,
                     data: jsonData
@@ -420,7 +420,7 @@ public actor StorageEngine {
             key: indexField,
             forIndex: true
         )
-        indexManager.insert(index: indexField, key: key, data: jsonData)
+        await indexManager.insert(index: indexField, key: key, data: jsonData)
 
     }
 }
