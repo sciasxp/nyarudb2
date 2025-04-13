@@ -56,7 +56,11 @@ public actor StorageEngine {
 
         // 4. Indexação otimizada
         if let indexField = indexField {
-            let key = try extractValue(from: jsonData, key: indexField, forIndex: true)
+            let key = try extractValue(
+                from: jsonData,
+                key: indexField,
+                forIndex: true
+            )
 
             let indexManager = indexManagers[
                 collection,
@@ -65,6 +69,32 @@ public actor StorageEngine {
             indexManager.createIndex(for: indexField)
             indexManager.insert(index: indexField, key: key, data: jsonData)
             indexManagers[collection] = indexManager
+        }
+    }
+
+    public func fetchDocuments<T: Codable>(from collection: String) async throws
+        -> [T]
+    {
+        guard let shardManager = activeShardManagers[collection] else {
+            return []
+        }
+
+        let shards = shardManager.allShards()
+
+        // Cria um grupo de tarefas para carregar os documentos de cada shard de forma concorrente.
+        return try await withThrowingTaskGroup(of: [T].self) { group in
+            for shard in shards {
+                group.addTask {
+                    return try await shard.loadDocuments() as [T]
+                }
+            }
+
+            // Combina os resultados de todas as tarefas
+            var results: [T] = []
+            for try await docs in group {
+                results.append(contentsOf: docs)
+            }
+            return results
         }
     }
 
@@ -132,7 +162,11 @@ public actor StorageEngine {
                 return newManager
             }()
 
-        let key = try extractValue(from: jsonData, key: indexField, forIndex: true)
+        let key = try extractValue(
+            from: jsonData,
+            key: indexField,
+            forIndex: true
+        )
         indexManager.insert(index: indexField, key: key, data: jsonData)
 
     }

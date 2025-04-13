@@ -139,4 +139,30 @@ final class StorageEngineTests: XCTestCase {
         XCTAssertEqual(decoded.count, 3)
         XCTAssertEqual(decoded, [model1, model2, model3])
     }
+
+    func testFetchDocuments() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        
+        // Inicializa o StorageEngine sem particionamento (usa "default")
+        let storage = try StorageEngine(path: tempDirectory.path, shardKey: nil, compressionMethod: .none)
+        
+        // Cria alguns modelos de teste
+        let model1 = TestModel(id: 1, name: "One", category: nil)
+        let model2 = TestModel(id: 2, name: "Two", category: nil)
+        let model3 = TestModel(id: 3, name: "Three", category: nil)
+        
+        // Insere os documentos
+        try await storage.insertDocument(model1, collection: "MyCollection")
+        try await storage.insertDocument(model2, collection: "MyCollection")
+        try await storage.insertDocument(model3, collection: "MyCollection")
+        
+        // Agora utiliza o método fetchDocuments otimizado para buscar todos os documentos da coleção
+        let fetched: [TestModel] = try await storage.fetchDocuments(from: "MyCollection")
+        
+        // Valida se o número de documentos é o esperado
+        XCTAssertEqual(fetched.count, 3)
+        // Se a ordem for garantida pela estratégia de append, podemos verificar também:
+        XCTAssertEqual(fetched, [model1, model2, model3])
+    }
 }
