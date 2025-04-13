@@ -28,13 +28,13 @@ public class ShardManager {
         self.fileProtectionType = fileProtectionType
     }
 
-    public func createShard(withID id: String) throws -> Shard {
+    public func createShard(withID id: String) async throws -> Shard {
         guard shards[id] == nil else {
             throw ShardManagerError.shardAlreadyExists(shardID: id)
         }
 
         let shardURL = baseURL.appendingPathComponent("\(id).nyaru")
-        
+
         let shard = Shard(
             id: id,
             url: shardURL,
@@ -43,13 +43,21 @@ public class ShardManager {
         )
 
         shards[id] = shard
-        
-        try shard.saveDocuments([] as [String])
+
+        try await shard.saveDocuments([] as [String])
 
         try saveMetadata(for: shard)
 
         return shard
     }
+
+    public func getOrCreateShard(id: String) async throws -> Shard {
+        if let shard = shards[id] {
+            return shard
+        }
+        return try await createShard(withID: id)
+    }
+
 
     public func getShard(byID id: String) throws -> Shard {
         guard let shard = shards[id] else {
@@ -100,6 +108,10 @@ public class ShardManager {
         let metaURL = shardURL.appendingPathExtension("meta.json")
         let data = try Data(contentsOf: metaURL)
         return try JSONDecoder().decode(ShardMetadata.self, from: data)
+    }
+
+    public func allShards() -> [Shard] {
+        return Array(shards.values)
     }
 }
 

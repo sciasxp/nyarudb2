@@ -37,7 +37,7 @@ public class Shard {
         self.fileProtectionType = fileProtectionType
     }
 
-    public func loadDocuments<T: Codable>() throws -> [T] {
+    public func loadDocuments<T: Codable>() async throws -> [T] {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return []
         }
@@ -46,7 +46,7 @@ public class Shard {
         return try JSONDecoder().decode([T].self, from: data)
     }
 
-    public func saveDocuments<T: Codable>(_ documents: [T]) throws {
+    public func saveDocuments<T: Codable>(_ documents: [T]) async throws {
         let data = try JSONEncoder().encode(documents)
         let compressedData = try compressData(data, method: compressionMethod)
         try compressedData.write(to: url, options: .atomic)
@@ -59,4 +59,9 @@ public class Shard {
         metadata.documentCount = documents.count
         metadata.updatedAt = Date()
     }
+    public func appendDocument<T: Codable>(_ document: T, jsonData: Data) async throws {
+            var documents: [T] = (try? await loadDocuments()) ?? []
+            documents.append(document)
+            try await saveDocuments(documents)
+        }
 }
