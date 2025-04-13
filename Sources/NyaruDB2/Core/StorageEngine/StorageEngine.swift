@@ -98,6 +98,35 @@ public actor StorageEngine {
         }
     }
 
+    public func fetchDocumentsLazy<T: Codable>(from collection: String)
+        -> AsyncThrowingStream<T, Error>
+    {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    // Verifica se existe um gerenciador de shards para a coleção
+                    guard let shardManager = activeShardManagers[collection]
+                    else {
+                        continuation.finish()
+                        return
+                    }
+
+                    let shards = shardManager.allShards()
+                    // Itera sobre cada shard e, para cada documento carregado, emite individualmente.
+                    for shard in shards {
+                        let docs: [T] = try await shard.loadDocuments()
+                        for doc in docs {
+                            continuation.yield(doc)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     public func deleteDocuments<T: Codable>(
         where predicate: (T) -> Bool,
         from collection: String
@@ -313,9 +342,12 @@ public actor StorageEngine {
         // Retorna os nomes dos diretórios
         return collections.map { $0.lastPathComponent }
     }
-    
-    public func getShardManagers(for collection: String) async throws -> [Shard] {
-        guard let shardManager = activeShardManagers[collection] else { return [] }
+
+    public func getShardManagers(for collection: String) async throws -> [Shard]
+    {
+        guard let shardManager = activeShardManagers[collection] else {
+            return []
+        }
         return shardManager.allShards()
     }
 

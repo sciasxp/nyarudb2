@@ -65,6 +65,10 @@ public struct NyaruDB2 {
         return try await storage.fetchDocuments(from: collection)
     }
     
+    public func fetchLazy<T: Codable>(from collection: String) async -> AsyncThrowingStream<T, Error> {
+        await storage.fetchDocumentsLazy(from: collection)
+    }
+    
     // MARK: - Operações Administrativas
     
     /// Conta o total de documentos de uma coleção.
