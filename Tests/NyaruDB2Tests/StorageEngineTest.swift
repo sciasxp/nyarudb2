@@ -165,4 +165,31 @@ final class StorageEngineTests: XCTestCase {
         // Se a ordem for garantida pela estratégia de append, podemos verificar também:
         XCTAssertEqual(fetched, [model1, model2, model3])
     }
+
+    func testDeleteDocument() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        
+        // Inicializa StorageEngine sem particionamento
+        let storage = try StorageEngine(path: tempDirectory.path, shardKey: nil, compressionMethod: .none)
+        
+        let model1 = TestModel(id: 1, name: "Alice", category: nil)
+        let model2 = TestModel(id: 2, name: "Bob", category: nil)
+        let model3 = TestModel(id: 3, name: "Alice", category: nil)
+        
+        // Inserir três documentos
+        try await storage.insertDocument(model1, collection: "Users")
+        try await storage.insertDocument(model2, collection: "Users")
+        try await storage.insertDocument(model3, collection: "Users")
+        
+        // Agora, deleta os documentos cujo nome seja "Alice"
+        try await storage.deleteDocuments(where: { (doc: TestModel) -> Bool in
+            return doc.name == "Alice"
+        }, from: "Users")
+        
+        // Verifica que apenas o documento de Bob permanece
+        let remaining: [TestModel] = try await storage.fetchDocuments(from: "Users")
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining.first?.name, "Bob")
+    }
 }

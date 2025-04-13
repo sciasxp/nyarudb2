@@ -98,6 +98,33 @@ public actor StorageEngine {
         }
     }
 
+    public func deleteDocuments<T: Codable>(
+        where predicate: (T) -> Bool,
+        from collection: String
+    ) async throws {
+        // Obter o gerenciador de shards para a coleção.
+        guard let shardManager = activeShardManagers[collection] else {
+            return // Se não existir, nada para deletar.
+        }
+        let shards = shardManager.allShards()
+        
+        // Para cada shard, carregar os documentos, filtrar os que NÃO satisfazem o predicado e gravar novamente.
+        // Se a coleção estiver particionada, pode ser necessário iterar por todos os shards.
+        for shard in shards {
+            // Carrega os documentos do shard de forma assíncrona.
+            let documents: [T] = try await shard.loadDocuments()
+            
+            // Filtra os documentos que não devem ser deletados.
+            let newDocuments = documents.filter { !predicate($0) }
+            
+            // Se houve alteração, grava os novos documentos no shard.
+            if newDocuments.count != documents.count {
+                try await shard.saveDocuments(newDocuments)
+            }
+        }
+    }
+    
+
     // MARK: - Métodos auxiliares
     private func extractValue(
         from data: Data,
