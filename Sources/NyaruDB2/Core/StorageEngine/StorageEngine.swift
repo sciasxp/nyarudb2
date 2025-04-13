@@ -265,7 +265,7 @@ public actor StorageEngine {
             try await shard.saveDocuments(existingDocs)
         }
     }
-    
+
     public func countDocuments(in collection: String) async throws -> Int {
         // Obtém o gerenciador de shards para a coleção
         guard let shardManager = activeShardManagers[collection] else {
@@ -279,19 +279,40 @@ public actor StorageEngine {
         }
         return totalCount
     }
-    
+
     public func dropCollection(_ collection: String) async throws {
         // Remove o diretório da coleção
-        let collectionURL = baseURL.appendingPathComponent(collection, isDirectory: true)
+        let collectionURL = baseURL.appendingPathComponent(
+            collection,
+            isDirectory: true
+        )
         try FileManager.default.removeItem(at: collectionURL)
-        
+
         // Remove a coleção dos gerenciadores ativos
         activeShardManagers.removeValue(forKey: collection)
         indexManagers.removeValue(forKey: collection)
     }
 
-    
+    public func listCollections() throws -> [String] {
+        // Obtém todos os itens contidos no diretório base.
+        let items = try FileManager.default.contentsOfDirectory(
+            at: baseURL,
+            includingPropertiesForKeys: nil
+        )
 
+        // Filtra apenas os itens que são diretórios (que são nossas coleções)
+        let collections = items.filter { url in
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(
+                atPath: url.path,
+                isDirectory: &isDirectory
+            )
+            return isDirectory.boolValue
+        }
+
+        // Retorna os nomes dos diretórios
+        return collections.map { $0.lastPathComponent }
+    }
 
     // MARK: - Métodos auxiliares
     private func extractValue(

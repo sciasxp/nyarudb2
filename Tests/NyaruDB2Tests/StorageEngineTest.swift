@@ -510,4 +510,40 @@ final class StorageEngineTests: XCTestCase {
             "Depois de dropar a coleção, a contagem de documentos deve ser 0"
         )
     }
+
+    func testListCollections() async throws {
+        // Cria um diretório temporário para o teste.
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: tempDirectory,
+            withIntermediateDirectories: true
+        )
+
+        // Cria alguns subdiretórios que simulam coleções.
+        let collections = ["Users", "Orders", "Products"]
+        for collection in collections {
+            let collectionURL = tempDirectory.appendingPathComponent(
+                collection,
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: collectionURL,
+                withIntermediateDirectories: true
+            )
+        }
+
+        // Inicializa um StorageEngine com o diretório base criado
+        let storage = try StorageEngine(
+            path: tempDirectory.path,
+            shardKey: nil,
+            compressionMethod: .none
+        )
+
+        // Chama a função listCollections
+        let listedCollections = try await storage.listCollections()
+
+        // Como o FileManager pode não garantir a ordem, ordenamos antes de comparar
+        XCTAssertEqual(listedCollections.sorted(), collections.sorted())
+    }
 }
