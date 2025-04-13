@@ -104,26 +104,93 @@ public actor StorageEngine {
     ) async throws {
         // Obter o gerenciador de shards para a coleção.
         guard let shardManager = activeShardManagers[collection] else {
-            return // Se não existir, nada para deletar.
+            return  // Se não existir, nada para deletar.
         }
         let shards = shardManager.allShards()
-        
+
         // Para cada shard, carregar os documentos, filtrar os que NÃO satisfazem o predicado e gravar novamente.
         // Se a coleção estiver particionada, pode ser necessário iterar por todos os shards.
         for shard in shards {
             // Carrega os documentos do shard de forma assíncrona.
             let documents: [T] = try await shard.loadDocuments()
-            
+
             // Filtra os documentos que não devem ser deletados.
             let newDocuments = documents.filter { !predicate($0) }
-            
+
             // Se houve alteração, grava os novos documentos no shard.
             if newDocuments.count != documents.count {
                 try await shard.saveDocuments(newDocuments)
             }
         }
     }
-    
+
+    public func updateDocument<T: Codable>(
+        _ document: T,
+        in collection: String,
+        matching predicate: (T) -> Bool,
+        indexField: String? = nil
+    ) async throws {
+        // 1. Codifica o documento atualizado
+        let jsonData = try JSONEncoder().encode(document)
+
+        // 2. Determina o shard em que o documento deve residir.
+        // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
+        let shardManager = try await getOrCreateShardManager(for: collection)
+        let shard: Shard
+        if let key = shardKey {
+            // Usa nossa função extractValue para obter o valor da chave de partição.
+            let partitionValue = try extractValue(from: jsonData, key: key)
+            shard = try await shardManager.getOrCreateShard(id: partitionValue)
+        } else {
+            shard = try await shardManager.getOrCreateShard(id: "default")
+        }
+
+        // 3. Carrega os documentos existentes no shard
+        var documents: [T] = try await shard.loadDocuments()
+
+        // 4. Procura pelo documento correspondente, usando o predicado fornecido.
+        guard let indexToUpdate = documents.firstIndex(where: predicate) else {
+            throw NSError(
+                domain: "StorageEngine",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Documento não encontrado para update."
+                ]
+            )
+        }
+
+        // 5. Atualiza o documento na posição encontrada
+        documents[indexToUpdate] = document
+
+        // 6. Salva o array atualizado de documentos de volta ao shard
+        try await shard.saveDocuments(documents)
+
+        // 7. Se um campo de índice for informado, atualiza a entrada no índice.
+        if let indexField = indexField {
+            // Extraí o valor do campo de índice no documento atualizado.
+            let key = try extractValue(
+                from: jsonData,
+                key: indexField,
+                forIndex: true
+            )
+
+            // Obtém ou cria o IndexManager para a coleção
+            let indexManager =
+                indexManagers[collection]
+                ?? {
+                    let newManager = IndexManager()
+                    newManager.createIndex(for: indexField)
+                    indexManagers[collection] = newManager
+                    return newManager
+                }()
+
+            // Atualiza a entrada no índice – a estratégia mais simples aqui é inserir a nova versão,
+            // assumindo que se o índice já possui essa chave, o método de insert adicionará o novo dado.
+            indexManager.insert(index: indexField, key: key, data: jsonData)
+            indexManagers[collection] = indexManager
+        }
+    }
 
     // MARK: - Métodos auxiliares
     private func extractValue(

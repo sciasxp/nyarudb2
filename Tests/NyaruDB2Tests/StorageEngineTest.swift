@@ -192,4 +192,45 @@ final class StorageEngineTests: XCTestCase {
         XCTAssertEqual(remaining.count, 1)
         XCTAssertEqual(remaining.first?.name, "Bob")
     }
+
+    func testUpdateDocumentWithoutPartitionAndIndex() async throws {
+        // Cria um diretório temporário para isolar os dados do teste.
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        
+        // Inicializa o StorageEngine sem shardKey (todos os documentos vão para o shard "default")
+        let storage = try StorageEngine(path: tempDirectory.path, shardKey: nil, compressionMethod: .none)
+        
+        // Insere dois documentos
+        let model1 = TestModel(id: 1, name: "Alice", category: nil)
+        let model2 = TestModel(id: 2, name: "Bob", category: nil)
+        
+        try await storage.insertDocument(model1, collection: "TestCollection")
+        try await storage.insertDocument(model2, collection: "TestCollection")
+        
+        // Cria um documento atualizado para model1 (por exemplo, altera o nome para "Alicia")
+        let updatedModel1 = TestModel(id: 1, name: "Alicia", category: nil)
+        
+        // Chama a função updateDocument
+        try await storage.updateDocument(
+            updatedModel1,
+            in: "TestCollection",
+            matching: { (doc: TestModel) -> Bool in
+                return doc.id == 1
+            }
+        )
+        
+        // Recupera os documentos da coleção usando fetchDocuments
+        let fetched: [TestModel] = try await storage.fetchDocuments(from: "TestCollection")
+        
+        // Verifica se os documentos foram atualizados corretamente
+        XCTAssertEqual(fetched.count, 2, "Devem existir 2 documentos após o update")
+        
+        // Verifica que o documento com id 1 foi atualizado
+        guard let model = fetched.first(where: { $0.id == 1 }) else {
+            XCTFail("Documento com id 1 não foi encontrado")
+            return
+        }
+        XCTAssertEqual(model.name, "Alicia", "O nome do documento atualizado deve ser 'Alicia'")
+    }
 }
