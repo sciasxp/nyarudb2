@@ -357,6 +357,11 @@ public actor StorageEngine {
         return shardManager.allShards()
     }
 
+    public func getShard(forPartition partition: String, in collection: String) async throws -> Shard? {
+        let shards = try await getShardManagers(for: collection)
+        return shards.first(where: { $0.id == partition })
+    }
+
     private func getOrCreateShardManager(for collection: String) async throws
         -> ShardManager
     {
