@@ -1,38 +1,69 @@
 import Foundation
 
+// This is the refactored QueryEngine that now integrates with the QueryPlanner.
 public struct Query<T: Codable> {
-    
-    public enum Operator {
-        case equal(Any)
-        case notEqual(Any)
-        case lessThan(Any)
-        case lessThanOrEqual(Any)
-        case greaterThan(Any)
-        case greaterThanOrEqual(Any)
-        case between(lower: Any, upper: Any)
-        case contains(Any)
-        case startsWith(String)
-        case endsWith(String)
-        case `in`([Any])
-        case exists
-        case notExists
-    }
-    
     private let collection: String
-    private var predicates: [(field: String, op: Operator)] = []
-    
-    public init(collection: String) {
+    private var predicates: [(field: String, op: QueryOperator)] = []
+    private let storage: StorageEngine
+    private let planner: QueryPlanner
+
+    // Initialize the query with storage and statistics for planning.
+    public init(
+        collection: String,
+        storage: StorageEngine,
+        indexStats: [String: IndexStat],
+        shardStats: [ShardStat]
+    ) {
         self.collection = collection
+        self.storage = storage
+        self.planner = QueryPlanner(
+            indexStats: indexStats,
+            shardStats: shardStats
+        )
+    }
+
+    /// Adds a predicate to the query.
+    public mutating func `where`(_ field: String, _ op: QueryOperator) {
+        predicates.append((field: field, op: op))
+    }
+
+    /// Returns an execution plan for debugging or optimization purposes.
+    public func explain() -> ExecutionPlan {
+        let availableIndexes = Array(planner.indexStats.keys)
+        return planner.optimize(
+            collection: collection,
+            predicates: predicates,
+            availableIndexes: availableIndexes
+        )
+    }
+
+    /// Executes the query based on the execution plan.
+    /// Currently, this implementation always uses a full scan but could be extended to support index-only and hybrid scans.
+    public func execute() async throws -> [T] {
+        // For now, use a full scan strategy.
+        var results = [T]()
+        let shards = try await storage.getShardManagers(for: collection)
+
+        for shard in shards {
+            let docs: [T] = try await shard.loadDocuments()
+            for doc in docs {
+                let dict = try convertToDictionary(doc)
+                var match = true
+                for (field, op) in predicates {
+                    let fieldValue = dict[field]
+                    if !evaluatePredicate(documentValue: fieldValue, op: op) {
+                        match = false
+                        break
+                    }
+                }
+                if match {
+                    results.append(doc)
+                }
+            }
+        }
+        return results
     }
     
-    /// Adiciona um predicado à query.
-    public func `where`(_ field: String, _ op: Operator) -> Self {
-        var copy = self
-        copy.predicates.append((field, op))
-        return copy
-    }
-    
-    /// Cria um fluxo assíncrono de documentos que atendem aos predicados, usando leitura incremental de cada shard.
     public func fetchStream(from storage: StorageEngine) -> AsyncThrowingStream<T, Error> {
         AsyncThrowingStream { continuation in
             Task {
@@ -65,8 +96,9 @@ public struct Query<T: Codable> {
         }
     }
     
+
     // MARK: - Helpers
-    
+
     private func convertToDictionary(_ value: T) throws -> [String: Any] {
         let data = try JSONEncoder().encode(value)
         let obj = try JSONSerialization.jsonObject(with: data, options: [])
@@ -74,13 +106,18 @@ public struct Query<T: Codable> {
             throw NSError(
                 domain: "QueryEngine",
                 code: 0,
-                userInfo: [NSLocalizedDescriptionKey: "Falha ao converter objeto para dicionário"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to convert object to dictionary"
+                ]
             )
         }
         return dict
     }
-    
-    private func evaluatePredicate(documentValue: Any?, op: Operator) -> Bool {
+
+    private func evaluatePredicate(documentValue: Any?, op: QueryOperator)
+        -> Bool
+    {
         switch op {
         case .exists:
             return documentValue != nil
@@ -99,9 +136,12 @@ public struct Query<T: Codable> {
         case .greaterThanOrEqual(let target):
             return compareNumeric(documentValue, target, using: >=)
         case .between(let lower, let upper):
-            return compareNumeric(documentValue, lower, using: >=) && compareNumeric(documentValue, upper, using: <=)
-        case .contains(let target):
-            if let s1 = stringValue(documentValue), let s2 = stringValue(target) {
+            return compareNumeric(documentValue, lower, using: >=)
+                && compareNumeric(documentValue, upper, using: <=)
+        case .contains(let substring):
+            if let s1 = stringValue(documentValue),
+                let s2 = stringValue(substring)
+            {
                 return s1.contains(s2)
             }
             return false
@@ -115,19 +155,11 @@ public struct Query<T: Codable> {
                 return s1.hasSuffix(suffix)
             }
             return false
-        case .in(let array):
-            if let s1 = stringValue(documentValue) {
-                for elem in array {
-                    if s1 == stringValue(elem) {
-                        return true
-                    }
-                }
-            }
+        default:
             return false
         }
     }
-    
-    // Compara valores tentando primeiro a conversão para Double para operações numéricas
+
     private func compareEquality(_ value1: Any?, _ value2: Any) -> Bool {
         if let d1 = toDouble(value1), let d2 = toDouble(value2) {
             return d1 == d2
@@ -137,35 +169,28 @@ public struct Query<T: Codable> {
         }
         return false
     }
-    
+
     private func toDouble(_ value: Any?) -> Double? {
-        if let num = value as? NSNumber {
-            return num.doubleValue
-        }
-        if let str = value as? String, let d = Double(str) {
-            return d
-        }
-        if let d = value as? Double {
-            return d
-        }
-        if let i = value as? Int {
-            return Double(i)
-        }
+        if let num = value as? NSNumber { return num.doubleValue }
+        if let str = value as? String, let d = Double(str) { return d }
+        if let d = value as? Double { return d }
+        if let i = value as? Int { return Double(i) }
         return nil
     }
-    
+
     private func stringValue(_ value: Any?) -> String? {
-        if let v = value {
-            return "\(v)"
-        }
+        if let v = value { return "\(v)" }
         return nil
     }
-    
-    private func compareNumeric(_ value1: Any?, _ value2: Any, using comparator: (Double, Double) -> Bool) -> Bool {
+
+    private func compareNumeric(
+        _ value1: Any?,
+        _ value2: Any,
+        using comparator: (Double, Double) -> Bool
+    ) -> Bool {
         if let d1 = toDouble(value1), let d2 = toDouble(value2) {
             return comparator(d1, d2)
         }
-        // Se não for numérico, tenta comparar as representações de hash como fallback
         if let s1 = stringValue(value1), let s2 = stringValue(value2) {
             return comparator(Double(s1.hashValue), Double(s2.hashValue))
         }

@@ -28,6 +28,89 @@ public struct GlobalStats: Codable {
     public let totalSizeInBytes: UInt64
 }
 
+public struct IndexStat {
+    public let totalCount: Int
+    public let uniqueValuesCount: Int
+    public let valueDistribution: [AnyHashable: Int]
+
+    public func estimateRange(lower: AnyHashable, upper: AnyHashable) -> Int {
+        // Simplified range cost: adjust as needed.
+        return totalCount / 4
+    }
+}
+
+public struct ShardStat {
+    public let docCount: Int
+    public let fieldRanges: [String: (min: AnyHashable, max: AnyHashable)]
+
+    public func matchesAny(predicates: [(field: String, op: QueryOperator)])
+        -> Bool
+    {
+        for predicate in predicates {
+            if let range = fieldRanges[predicate.field] {
+                switch predicate.op {
+                case .equal(let value):
+                    if let valueInt = value as? Int,
+                        let minInt = range.min as? Int,
+                        let maxInt = range.max as? Int
+                    {
+                        if valueInt >= minInt && valueInt <= maxInt {
+                            return true
+                        }
+                    } else if let valueDouble = value as? Double,
+                        let minDouble = range.min as? Double,
+                        let maxDouble = range.max as? Double
+                    {
+                        if valueDouble >= minDouble && valueDouble <= maxDouble
+                        {
+                            return true
+                        }
+                    } else if let valueString = value as? String,
+                        let minString = range.min as? String,
+                        let maxString = range.max as? String
+                    {
+                        if valueString >= minString && valueString <= maxString
+                        {
+                            return true
+                        }
+                    }
+                case .range(let lower, let upper):
+                    if let lowerInt = lower as? Int,
+                        let upperInt = upper as? Int,
+                        let minInt = range.min as? Int,
+                        let maxInt = range.max as? Int
+                    {
+                        if upperInt >= minInt && lowerInt <= maxInt {
+                            return true
+                        }
+                    } else if let lowerDouble = lower as? Double,
+                        let upperDouble = upper as? Double,
+                        let minDouble = range.min as? Double,
+                        let maxDouble = range.max as? Double
+                    {
+                        if upperDouble >= minDouble && lowerDouble <= maxDouble
+                        {
+                            return true
+                        }
+                    } else if let lowerString = lower as? String,
+                        let upperString = upper as? String,
+                        let minString = range.min as? String,
+                        let maxString = range.max as? String
+                    {
+                        if upperString >= minString && lowerString <= maxString
+                        {
+                            return true
+                        }
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        return false
+    }
+}
+
 public actor StatsEngine {
 
     private let storage: StorageEngine
@@ -82,5 +165,34 @@ public actor StatsEngine {
             totalDocuments: globalDocuments,
             totalSizeInBytes: globalSize
         )
+    }
+
+    public func getIndexStats() async -> [String: IndexStat] {
+        var stats = [String: IndexStat]()
+        // This example assumes that StorageEngine manages indexManagers in a dictionary keyed by collection.
+        // Replace this dummy data with actual values from your index managers.
+        for (collection, _) in await storage.indexManagers {
+            let dummyStat = IndexStat(
+                totalCount: 100,           // e.g., total number of entries
+                uniqueValuesCount: 10,       // e.g., count of unique keys
+                valueDistribution: [:]       // e.g., frequency histogram (empty for now)
+            )
+            stats[collection] = dummyStat
+        }
+        return stats
+    }
+
+    public func getShardStats() async throws -> [ShardStat] {
+        var shardStats = [ShardStat]()
+        for (_, manager) in await storage.activeShardManagers {
+            for shard in manager.allShards() {
+                let stat = ShardStat(
+                    docCount: shard.metadata.documentCount,
+                    fieldRanges: [:]   // Placeholder; replace with actual range data if available.
+                )
+                shardStats.append(stat)
+            }
+        }
+        return shardStats
     }
 }

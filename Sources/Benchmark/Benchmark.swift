@@ -1,7 +1,6 @@
 import Compression
 import Foundation
 import NyaruDB2
-
 // MARK: - Resultados do Benchmark
 
 public struct BenchmarkResult: Codable {
@@ -189,8 +188,13 @@ public final class NyaruDBBenchmark {
                 }
             } else {
                 // Cenário não particionado: percorre todos os shards
-                let query = Query<TestDocument>(collection: "test")
-                    .where("category", .equal("Test"))
+                var query = Query<TestDocument>(
+                    collection: "test",
+                    storage: db.storage,
+                    indexStats: try await db.getIndexStats(),
+                    shardStats: try await db.getShardStats()
+                )
+                query.where("category", .equal("Test"))
                 let stream = query.fetchStream(from: db.storage)
                 for try await _ in stream {}
             }

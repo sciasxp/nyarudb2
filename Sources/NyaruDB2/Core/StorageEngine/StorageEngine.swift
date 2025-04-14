@@ -6,8 +6,8 @@ public actor StorageEngine {
     private let compressionMethod: CompressionMethod
     private let fileProtectionType: FileProtectionType
     private let shardKey: String?
-    private var activeShardManagers = [String: ShardManager]()
-    private var indexManagers: [String: IndexManager<String>] = [:]
+    public var activeShardManagers = [String: ShardManager]()
+    public var indexManagers: [String: IndexManager<String>] = [:]
 
     public enum StorageError: Error {
         case invalidDocument

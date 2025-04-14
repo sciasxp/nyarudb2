@@ -69,8 +69,13 @@ public struct NyaruDB2 {
         await storage.fetchDocumentsLazy(from: collection)
     }
 
-    public func query<T: Codable>(from collection: String) -> Query<T> {
-        return Query<T>(collection: collection)
+    public func query<T: Codable>(from collection: String) async throws -> Query<T> {
+        return Query<T>(
+            collection: collection,
+            storage: self.storage,
+            indexStats: try await self.getIndexStats(),
+            shardStats: try await self.getShardStats()
+        )
     }
     
     // MARK: - Operações Administrativas
@@ -100,5 +105,14 @@ public struct NyaruDB2 {
     /// Obtém estatísticas globais do banco (número de coleções, total de documentos, tamanho total).
     public func getGlobalStats() async throws -> GlobalStats {
         return try await statsEngine.getGlobalStats()
+    }
+
+    public func getIndexStats() async throws -> [String: IndexStat] {
+        return await statsEngine.getIndexStats()
+    }
+    
+    // Returns shard statistics (e.g., document counts and value ranges from metadata).
+    public func getShardStats() async throws -> [ShardStat] {
+        return try await statsEngine.getShardStats()
     }
 }
