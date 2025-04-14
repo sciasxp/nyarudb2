@@ -10,15 +10,19 @@ struct StorageEngineTestModel: Codable, Equatable {
 }
 
 final class StorageEngineTests: XCTestCase {
-    
+
     var tempDirectory: URL!
     var storage: StorageEngine!
-    
+
     override func setUp() async throws {
         // Cria um diretório temporário para isolar o teste
-        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: tempDirectory,
+            withIntermediateDirectories: true
+        )
+
         // Inicializa o StorageEngine sem particionamento (usa "default" para todos os documentos)
         // Aqui, para o teste, usamos FileProtection.none (definido via enum ou typealias, conforme sua implementação)
         storage = try StorageEngine(
@@ -32,7 +36,6 @@ final class StorageEngineTests: XCTestCase {
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tempDirectory)
     }
-
 
     func testInsertDocumentWithoutPartitionAndIndex() async throws {
         let tempDirectory = FileManager.default.temporaryDirectory
@@ -345,7 +348,11 @@ final class StorageEngineTests: XCTestCase {
         try await storage.insertDocument(model2, collection: "TestCollection")
 
         // Cria um documento atualizado para model1 (por exemplo, altera o nome para "Alicia")
-        let updatedModel1 = StorageEngineTestModel(id: 1, name: "Alicia", category: nil)
+        let updatedModel1 = StorageEngineTestModel(
+            id: 1,
+            name: "Alicia",
+            category: nil
+        )
 
         // Chama a função updateDocument
         try await storage.updateDocument(
@@ -570,32 +577,41 @@ final class StorageEngineTests: XCTestCase {
         XCTAssertEqual(listedCollections.sorted(), collections.sorted())
     }
 
-
     func testFetchDocumentsStream() async throws {
         // Inserir documentos de teste na coleção "TestCollection"
         let model1 = TestModel(id: 1, name: "One", category: nil)
         let model2 = TestModel(id: 2, name: "Two", category: nil)
         let model3 = TestModel(id: 3, name: "Three", category: nil)
-        
+
         try await storage.insertDocument(model1, collection: "TestCollection")
         try await storage.insertDocument(model2, collection: "TestCollection")
         try await storage.insertDocument(model3, collection: "TestCollection")
-        
+
         // Usa o método fetchDocumentsStream para recuperar os documentos
-        let stream: AsyncThrowingStream<TestModel, Error> = await storage.fetchDocumentsLazy(from: "TestCollection")
-        
+        let stream: AsyncThrowingStream<TestModel, Error> =
+            await storage.fetchDocumentsLazy(from: "TestCollection")
+
         // Coleta os documentos emitidos pelo stream incrementalmente
         var results: [TestModel] = []
         for try await document in stream {
             results.append(document)
         }
-        
+
         // Valida se a contagem e o conteúdo são os esperados.
         // Como a ordem pode não ser garantida, vamos validar pelo conteúdo.
         XCTAssertEqual(results.count, 3, "Deve retornar 3 documentos")
-        
-        XCTAssertTrue(results.contains(model1), "Deve conter o documento model1")
-        XCTAssertTrue(results.contains(model2), "Deve conter o documento model2")
-        XCTAssertTrue(results.contains(model3), "Deve conter o documento model3")
+
+        XCTAssertTrue(
+            results.contains(model1),
+            "Deve conter o documento model1"
+        )
+        XCTAssertTrue(
+            results.contains(model2),
+            "Deve conter o documento model2"
+        )
+        XCTAssertTrue(
+            results.contains(model3),
+            "Deve conter o documento model3"
+        )
     }
 }

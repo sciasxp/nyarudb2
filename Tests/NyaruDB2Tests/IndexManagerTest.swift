@@ -4,9 +4,9 @@ import XCTest
 final class IndexManagerTests: XCTestCase {
     
     func testCreateIndexAndInsertSearch() async {
-        let manager = IndexManager()
+        let manager = IndexManager<String>()
         // Cria um índice para o campo "name"
-        manager.createIndex(for: "name", minimumDegree: 2)
+        await manager.createIndex(for: "name", minimumDegree: 2)
         
         let data1 = "Record1".data(using: .utf8)!
         let data2 = "Record2".data(using: .utf8)!
@@ -23,7 +23,7 @@ final class IndexManagerTests: XCTestCase {
     }
     
     func testSearchWithoutIndex() async {
-        let manager = IndexManager()
+        let manager = IndexManager<String>()
         // Se o índice para o campo "age" não foi criado, a busca deve retornar vazio
         let results = await manager.search("age", value: "30")
         XCTAssertEqual(results.count, 0)

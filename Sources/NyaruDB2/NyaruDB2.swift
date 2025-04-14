@@ -2,7 +2,7 @@ import Foundation
 
 public struct NyaruDB2 {
     public let storage: StorageEngine
-    public let indexManager: IndexManager
+    public let indexManager: IndexManager<String>
     private let statsEngine: StatsEngine
 
     // Parâmetros padrão podem ser estendidos para incluir shardKey, compressão, etc.

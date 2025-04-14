@@ -5,7 +5,7 @@ import Compression
 /// Uma árvore B autobalanceada para indexar dados.
 /// Essa implementação mapeia chaves do tipo Key para arrays de Data.
 /// Agora implementada como um actor para garantir segurança concorrente.
-public actor BTreeIndex<Key: Comparable> {
+public actor BTreeIndex<Key: Comparable & Codable> {
     
     // MARK: - Definição Interna do Nó
     private class Node {

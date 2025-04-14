@@ -7,7 +7,7 @@ public actor StorageEngine {
     private let fileProtectionType: FileProtectionType
     private let shardKey: String?
     private var activeShardManagers = [String: ShardManager]()
-    private var indexManagers = [String: IndexManager]()
+    private var indexManagers: [String: IndexManager<String>] = [:]
 
     public enum StorageError: Error {
         case invalidDocument
@@ -66,7 +66,7 @@ public actor StorageEngine {
                 collection,
                 default: IndexManager()
             ]
-            indexManager.createIndex(for: indexField)
+            await indexManager.createIndex(for: indexField)
             await indexManager.insert(index: indexField, key: key, data: jsonData)
             indexManagers[collection] = indexManager
         }
@@ -205,19 +205,18 @@ public actor StorageEngine {
             )
 
             // Obtém ou cria o IndexManager para a coleção
-            let indexManager =
-                indexManagers[collection]
-                ?? {
-                    let newManager = IndexManager()
-                    newManager.createIndex(for: indexField)
-                    indexManagers[collection] = newManager
-                    return newManager
-                }()
+            var indexManager: IndexManager<String>
+            if let existing = indexManagers[collection] {
+                indexManager = existing
+            } else {
+                indexManager = IndexManager<String>()
+                await indexManager.createIndex(for: indexField)
+                indexManagers[collection] = indexManager
+            }
 
             // Atualiza a entrada no índice – a estratégia mais simples aqui é inserir a nova versão,
             // assumindo que se o índice já possui essa chave, o método de insert adicionará o novo dado.
             await indexManager.insert(index: indexField, key: key, data: jsonData)
-            indexManagers[collection] = indexManager
         }
     }
 
@@ -235,8 +234,8 @@ public actor StorageEngine {
         // Para atualizar os índices, vamos assegurar que o IndexManager exista para a coleção,
         // se indexField for especificado
         if let indexField = indexField, indexManagers[collection] == nil {
-            let newManager = IndexManager()
-            newManager.createIndex(for: indexField)
+            let newManager = IndexManager<String>()
+            await newManager.createIndex(for: indexField)
             indexManagers[collection] = newManager
         }
 
@@ -261,21 +260,20 @@ public actor StorageEngine {
                     key: indexField,
                     forIndex: true
                 )
-                let indexManager = indexManagers[
-                    collection,
-                    default: {
-                        let newManager = IndexManager()
-                        newManager.createIndex(for: indexField)
-                        indexManagers[collection] = newManager
-                        return newManager
-                    }()
-                ]
+                let indexManager: IndexManager<String>
+                if let existing = indexManagers[collection] {
+                    indexManager = existing
+                } else {
+                    let newManager = IndexManager<String>()
+                    await newManager.createIndex(for: indexField)
+                    indexManagers[collection] = newManager
+                    indexManager = newManager
+                }
                 await indexManager.insert(
                     index: indexField,
                     key: indexKey,
                     data: jsonData
                 )
-                indexManagers[collection] = indexManager
             }
         }
 
@@ -406,14 +404,15 @@ public actor StorageEngine {
         indexField: String,
         jsonData: Data
     ) async throws {
-        let indexManager =
-            indexManagers[collection]
-            ?? {
-                let newManager = IndexManager()
-                newManager.createIndex(for: indexField)
-                indexManagers[collection] = newManager
-                return newManager
-            }()
+        let indexManager: IndexManager<String>
+        if let existing = indexManagers[collection] {
+            indexManager = existing
+        } else {
+            let newManager = IndexManager<String>()
+            await newManager.createIndex(for: indexField)
+            indexManagers[collection] = newManager
+            indexManager = newManager
+        }
 
         let key = try extractValue(
             from: jsonData,
