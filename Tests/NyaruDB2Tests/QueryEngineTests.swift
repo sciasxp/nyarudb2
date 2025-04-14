@@ -38,11 +38,11 @@ final class QueryEngineTests: XCTestCase {
             compressionMethod: .none
         )
 
-        engine = try NyaruDB2( 
-        path: tempDirectory.path,
-        shardKey: nil,
-        compressionMethod: .none
-    )
+        engine = try NyaruDB2(
+            path: tempDirectory.path,
+            shardKey: nil,
+            compressionMethod: .none
+        )
 
         // Cria e insere alguns registros na coleção "Userss"
         let Userss: [Users] = [

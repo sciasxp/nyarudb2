@@ -25,23 +25,23 @@ final class ShardManagerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: shard.url.path))
     }
 
-//    func testGetNonexistentShard() throws {
-//        let baseURL = FileManager.default.temporaryDirectory
-//            .appendingPathComponent("ShardManagerTest2")
-//        try? FileManager.default.removeItem(at: baseURL)
-//        try FileManager.default.createDirectory(
-//            at: baseURL,
-//            withIntermediateDirectories: true
-//        )
-//
-//        let manager = ShardManager(
-//            baseURL: baseURL,
-//            compressionMethod: .none,
-//            fileProtectionType: .none
-//        )
-//        XCTAssertThrowsError(try manager.getShard(byID: "inexistente")) {
-//            error in
-//            // Valide que o erro é do tipo correto, se desejar
-//        }
-//    }
+    func testGetNonexistentShard() throws {
+        let baseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ShardManagerTest2")
+        try? FileManager.default.removeItem(at: baseURL)
+        try FileManager.default.createDirectory(
+            at: baseURL,
+            withIntermediateDirectories: true
+        )
+
+        let manager = ShardManager(
+            baseURL: baseURL,
+            compressionMethod: .none,
+            fileProtectionType: .none
+        )
+        XCTAssertThrowsError(try manager.getShard(byID: "inexistente")) {
+            error in
+            // Valide que o erro é do tipo correto, se desejar
+        }
+    }
 }

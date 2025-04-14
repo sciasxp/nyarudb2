@@ -2,7 +2,7 @@ import Compression
 import Foundation
 import zlib
 
-public enum CompressionMethod: String, CaseIterable, Codable{
+public enum CompressionMethod: String, CaseIterable, Codable {
     case none
     case gzip
     case lzfse

@@ -12,11 +12,11 @@ public actor BTreeIndex<Key: Comparable & Codable> {
         var values: [[Data]] = []
         var children: [Node] = []
         var isLeaf: Bool
-    
+
         init(isLeaf: Bool) {
             self.isLeaf = isLeaf
         }
-    
+
         private enum CodingKeys: String, CodingKey {
             case keys, values, children, isLeaf
         }
@@ -62,14 +62,14 @@ public actor BTreeIndex<Key: Comparable & Codable> {
         let decodedRoot = try decoder.decode(Node.self, from: data)
         self.root = decodedRoot
     }
-    
+
     public func loadPersistedIndex(from url: URL) async throws {
         let data = try Data(contentsOf: url)
         try await loadPersistedIndex(from: data)
     }
 
     public func insert(key: Key, data: Data) {
-        if search(key: key) != nil {
+        if let existing = search(key: key), !existing.isEmpty {
             insertDataIfExists(in: root, key: key, data: data)
             return
         }

@@ -1,6 +1,7 @@
 import Compression
 import Foundation
 import NyaruDB2
+
 // MARK: - Resultados do Benchmark
 
 public struct BenchmarkResult: Codable {

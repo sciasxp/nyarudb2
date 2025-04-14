@@ -3,7 +3,7 @@ public enum FileProtectionType: String, CaseIterable {
     case complete
     case completeUnlessOpen
     case completeUntilFirstUserAuthentication
-    
+
     public var systemValue: String {
         return "NS\(self.rawValue)"
     }

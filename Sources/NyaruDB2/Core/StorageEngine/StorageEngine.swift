@@ -54,19 +54,17 @@ public actor StorageEngine {
         // 3. Operações de I/O assíncronas
         try await shard.appendDocument(document, jsonData: jsonData)
 
-        // 4. Indexação otimizada
         if let indexField = indexField {
             let key = try DynamicDecoder.extractValue(
                 from: jsonData,
                 key: indexField,
                 forIndex: true
             )
-
-            let indexManager = indexManagers[
-                collection,
-                default: IndexManager()
-            ]
-            await indexManager.createIndex(for: indexField)
+            let indexManager =
+                indexManagers[collection] ?? IndexManager<String>()
+            // Remove a criação do índice se ele já existe;
+            // a criação deve acontecer uma única vez (por exemplo, na configuração inicial do datasource)
+            await indexManager.createIndex(for: indexField)  // NÃO chamar se o índice já foi criado
             await indexManager.insert(
                 index: indexField,
                 key: key,
@@ -100,6 +98,21 @@ public actor StorageEngine {
             }
             return results
         }
+    }
+
+    public func fetchFromIndex<T: Codable>(
+        collection: String,
+        field: String,
+        value: String
+    ) async throws -> [T] {
+        // Verifica se existe um indexManager para a coleção
+        guard let indexManager = indexManagers[collection] else {
+            return []
+        }
+        // Realiza a busca no índice
+        let dataArray = await indexManager.search(field, value: value)
+        // Decodifica cada item de Data para o tipo T
+        return try dataArray.map { try JSONDecoder().decode(T.self, from: $0) }
     }
 
     public func fetchDocumentsLazy<T: Codable>(from collection: String)
@@ -172,7 +185,10 @@ public actor StorageEngine {
         let shard: Shard
         if let key = shardKey {
             // Usa nossa função extractValue para obter o valor da chave de partição.
-            let partitionValue = try DynamicDecoder.extractValue(from: jsonData, key: key)
+            let partitionValue = try DynamicDecoder.extractValue(
+                from: jsonData,
+                key: key
+            )
             shard = try await shardManager.getOrCreateShard(id: partitionValue)
         } else {
             shard = try await shardManager.getOrCreateShard(id: "default")
@@ -349,6 +365,7 @@ public actor StorageEngine {
         return collections.map { $0.lastPathComponent }
     }
 
+    // TODO: move to ShardManager
     public func getShardManagers(for collection: String) async throws -> [Shard]
     {
         guard let shardManager = activeShardManagers[collection] else {
@@ -357,11 +374,15 @@ public actor StorageEngine {
         return shardManager.allShards()
     }
 
-    public func getShard(forPartition partition: String, in collection: String) async throws -> Shard? {
+    // TODO: move to ShardManager
+    public func getShard(forPartition partition: String, in collection: String)
+        async throws -> Shard?
+    {
         let shards = try await getShardManagers(for: collection)
         return shards.first(where: { $0.id == partition })
     }
 
+    // TODO: move to ShardManager
     private func getOrCreateShardManager(for collection: String) async throws
         -> ShardManager
     {
@@ -386,6 +407,7 @@ public actor StorageEngine {
         return newManager
     }
 
+    // TODO: move to IndexManager
     private func updateIndex(
         collection: String,
         indexField: String,

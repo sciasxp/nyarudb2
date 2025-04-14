@@ -21,7 +21,8 @@ final class BTreeIndexPersistenceTests: XCTestCase {
             await tree.insert(key: "Alice", data: "Data3".data(using: .utf8)!)
 
             // Persiste o índice em um arquivo temporário
-            let fileURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("btreeIndex.dat")
+            let fileURL = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("btreeIndex.dat")
             try await tree.persist(to: fileURL)
 
             // Cria uma nova BTreeIndex e carrega o estado persistido
@@ -39,4 +40,5 @@ final class BTreeIndexPersistenceTests: XCTestCase {
             )
         }
     }
+
 }

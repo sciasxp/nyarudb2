@@ -88,10 +88,6 @@ public enum QueryOperator: CustomStringConvertible {
     }
 }
 
-// MARK: - Supporting Types for Statistics
-
-
-
 // MARK: - QueryPlanner
 
 public struct QueryPlanner {
