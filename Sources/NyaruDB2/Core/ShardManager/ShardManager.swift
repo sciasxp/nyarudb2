@@ -124,15 +124,30 @@ public class ShardManager {
 
         let primaryShard = candidateShards.first!
 
-        var accumulatedDocs: [String] = []
+        var accumulatedDocs: [Any] = []
 
+        // Processa os shards candidatos, exceto o principal
         for shard in candidateShards.dropFirst() {
-            let docs: [String] = try await shard.loadDocuments()
-
+            // Lê os dados brutos do shard
+            let rawData = try Data(contentsOf: shard.url)
+            // Descomprime os dados usando o método associado ao shard
+            let decompressedData = try decompressData(
+                rawData,
+                method: shard.compressionMethod
+            )
+            // Converte o JSON para um array de Any (pode ser dicionário, String, número, etc.)
+            guard
+                let docs = try JSONSerialization.jsonObject(
+                    with: decompressedData,
+                    options: []
+                ) as? [Any]
+            else {
+                continue
+            }
             guard !docs.isEmpty else { continue }
             accumulatedDocs.append(contentsOf: docs)
 
-            // Remove the shard from disk.
+            // Remove o shard do disco
             do {
                 try FileManager.default.removeItem(at: shard.url)
                 let metaURL = shard.url.appendingPathExtension("meta.json")
@@ -141,6 +156,7 @@ public class ShardManager {
                 print("Warning: Failed to remove shard \(shard.id): \(error)")
             }
 
+            // Remove o shard do dicionário de shards
             if let keyToRemove = shards.first(where: { $0.value === shard })?
                 .key
             {
@@ -148,14 +164,37 @@ public class ShardManager {
             }
         }
 
-        var primaryDocs: [String] = try await primaryShard.loadDocuments()
+        // Lê os documentos já existentes no shard principal
+        let primaryRawData = try Data(contentsOf: primaryShard.url)
+        let primaryDecompressedData = try decompressData(
+            primaryRawData,
+            method: primaryShard.compressionMethod
+        )
+        let primaryDocs =
+            (try? JSONSerialization.jsonObject(
+                with: primaryDecompressedData,
+                options: []
+            )) as? [Any] ?? []
 
-        primaryDocs.append(contentsOf: accumulatedDocs)
+        // Combina os documentos
+        let mergedDocs = primaryDocs + accumulatedDocs
 
-        try await primaryShard.saveDocuments(primaryDocs)
+        // Serializa o array combinado de volta para JSON
+        let mergedData = try JSONSerialization.data(
+            withJSONObject: mergedDocs,
+            options: []
+        )
+        // Comprime os dados de volta
+        let compressedMergedData = try compressData(
+            mergedData,
+            method: primaryShard.compressionMethod
+        )
+        // Escreve no arquivo do shard principal
+        try compressedMergedData.write(to: primaryShard.url, options: .atomic)
 
+        // Atualiza os metadados do shard principal
         primaryShard.updateMetadata(
-            documentCount: primaryDocs.count,
+            documentCount: mergedDocs.count,
             updatedAt: Date()
         )
 
