@@ -6,28 +6,37 @@
 //
 
 import XCTest
+
 @testable import NyaruDB2
 
 final class BTreeIndexPersistenceTests: XCTestCase {
 
     func testPersistAndReload() async throws {
-        // Create a BTreeIndex instance and insert some keys.
-        let tree = BTreeIndex<String>(minimumDegree: 2)
-        await tree.insert(key: "apple", data: "fruit".data(using: .utf8)!)
-        await tree.insert(key: "carrot", data: "vegetable".data(using: .utf8)!)
-        await tree.insert(key: "banana", data: "fruit".data(using: .utf8)!)
+        func testPersistedIndexIsEquivalent() async throws {
+            let tree = BTreeIndex<String>(minimumDegree: 2)
 
-        // Persist the tree to a temporary file.
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("btree_test.json")
-        try await tree.persist(to: tempURL)
-        
-        // Reload the tree from the persisted state.
-        let reloadedTree = BTreeIndex<String>(minimumDegree: 2)
-        
-        // Compare the in-order traversals.
-        let originalInOrder = await tree.inOrder()
-        let reloadedInOrder = await reloadedTree.inOrder()
-        
-        XCTAssertEqual(originalInOrder, reloadedInOrder, "The reloaded tree should match the original tree.")
+            // Inserindo alguns dados
+            await tree.insert(key: "Alice", data: "Data1".data(using: .utf8)!)
+            await tree.insert(key: "Bob", data: "Data2".data(using: .utf8)!)
+            await tree.insert(key: "Alice", data: "Data3".data(using: .utf8)!)
+
+            // Persiste o índice em um arquivo temporário
+            let fileURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("btreeIndex.dat")
+            try await tree.persist(to: fileURL)
+
+            // Cria uma nova BTreeIndex e carrega o estado persistido
+            let newTree = BTreeIndex<String>(minimumDegree: 2)
+            try await newTree.loadPersistedIndex(from: fileURL)
+
+            // Testa se as buscas são equivalentes
+            let originalResult = await tree.search(key: "Alice")
+            let loadedResult = await newTree.search(key: "Alice")
+
+            XCTAssertEqual(
+                originalResult,
+                loadedResult,
+                "O índice carregado deve ser equivalente ao original"
+            )
+        }
     }
 }

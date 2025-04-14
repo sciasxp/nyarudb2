@@ -13,6 +13,8 @@ public class ShardManager {
     private let compressionMethod: CompressionMethod
     public let fileProtectionType: FileProtectionType
 
+    private var autoMergeTask: Task<Void, Never>?
+
     public init(
         baseURL: URL,
         compressionMethod: CompressionMethod = .none,
@@ -26,6 +28,12 @@ public class ShardManager {
         )
         self.compressionMethod = compressionMethod
         self.fileProtectionType = fileProtectionType
+
+        startAutoMergeProcess()
+    }
+
+    deinit {
+        autoMergeTask?.cancel()
     }
 
     public func createShard(withID id: String) async throws -> Shard {
@@ -57,7 +65,6 @@ public class ShardManager {
         }
         return try await createShard(withID: id)
     }
-
 
     public func getShard(byID id: String) throws -> Shard {
         guard let shard = shards[id] else {
@@ -91,6 +98,72 @@ public class ShardManager {
         }
     }
 
+    private func startAutoMergeProcess() {
+        autoMergeTask = Task<Void, Never> { () async -> Void in
+            while !Task.isCancelled {
+                do {
+                    // Check and merge small shards (this is a placeholder for the actual merge logic)
+                    try await mergeSmallShards()
+                } catch {
+                    print("Auto-merge error: \(error)")
+                }
+                // Sleep for 60 seconds before checking again.
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
+        }
+    }
+
+    private func mergeSmallShards() async throws {
+        let threshold = 100
+
+        let candidateShards = shards.values
+            .filter { $0.metadata.documentCount < threshold }
+            .sorted { $0.metadata.createdAt < $1.metadata.createdAt }
+
+        guard candidateShards.count > 1 else { return }
+
+        let primaryShard = candidateShards.first!
+
+        var accumulatedDocs: [String] = []
+
+        for shard in candidateShards.dropFirst() {
+            let docs: [String] = try await shard.loadDocuments()
+
+            guard !docs.isEmpty else { continue }
+            accumulatedDocs.append(contentsOf: docs)
+
+            // Remove the shard from disk.
+            do {
+                try FileManager.default.removeItem(at: shard.url)
+                let metaURL = shard.url.appendingPathExtension("meta.json")
+                try? FileManager.default.removeItem(at: metaURL)
+            } catch {
+                print("Warning: Failed to remove shard \(shard.id): \(error)")
+            }
+
+            if let keyToRemove = shards.first(where: { $0.value === shard })?
+                .key
+            {
+                shards.removeValue(forKey: keyToRemove)
+            }
+        }
+
+        var primaryDocs: [String] = try await primaryShard.loadDocuments()
+
+        primaryDocs.append(contentsOf: accumulatedDocs)
+
+        try await primaryShard.saveDocuments(primaryDocs)
+
+        primaryShard.updateMetadata(
+            documentCount: primaryDocs.count,
+            updatedAt: Date()
+        )
+
+        print(
+            "Merged \(accumulatedDocs.count) documents from \(candidateShards.count - 1) small shards into shard \(primaryShard.id)"
+        )
+    }
+
     private func metadataURL(for shard: Shard) -> URL {
         shard.url.appendingPathExtension("meta.json")
     }
@@ -115,7 +188,7 @@ public class ShardManager {
     }
 }
 
-public struct ShardMetadataInfo: Codable  {
+public struct ShardMetadataInfo: Codable {
     public let id: String
     public let url: URL
     public let metadata: ShardMetadata

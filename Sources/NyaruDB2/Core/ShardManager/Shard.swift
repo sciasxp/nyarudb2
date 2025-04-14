@@ -37,6 +37,11 @@ public class Shard {
         self.fileProtectionType = fileProtectionType
     }
 
+    public func updateMetadata(documentCount: Int, updatedAt: Date) {
+        self.metadata.documentCount = documentCount
+        self.metadata.updatedAt = updatedAt
+    }
+
     public func loadDocuments<T: Codable>() async throws -> [T] {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return []

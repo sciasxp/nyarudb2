@@ -57,6 +57,17 @@ public actor BTreeIndex<Key: Comparable & Codable> {
         }
     }
 
+    public func loadPersistedIndex(from data: Data) async throws {
+        let decoder = JSONDecoder()
+        let decodedRoot = try decoder.decode(Node.self, from: data)
+        self.root = decodedRoot
+    }
+    
+    public func loadPersistedIndex(from url: URL) async throws {
+        let data = try Data(contentsOf: url)
+        try await loadPersistedIndex(from: data)
+    }
+
     public func insert(key: Key, data: Data) {
         if search(key: key) != nil {
             insertDataIfExists(in: root, key: key, data: data)
