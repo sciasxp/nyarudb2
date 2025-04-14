@@ -59,9 +59,28 @@ public class Shard {
         metadata.documentCount = documents.count
         metadata.updatedAt = Date()
     }
-    public func appendDocument<T: Codable>(_ document: T, jsonData: Data) async throws {
-            var documents: [T] = (try? await loadDocuments()) ?? []
-            documents.append(document)
-            try await saveDocuments(documents)
+    public func appendDocument<T: Codable>(_ document: T, jsonData: Data)
+        async throws
+    {
+        var documents: [T] = (try? await loadDocuments()) ?? []
+        documents.append(document)
+        try await saveDocuments(documents)
+    }
+
+    public func loadDocumentsLazy<T: Codable>() -> AsyncThrowingStream<T, Error>
+    {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let docs: [T] = try await self.loadDocuments()
+                    for doc in docs {
+                        continuation.yield(doc)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
+    }
 }

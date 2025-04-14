@@ -25,28 +25,24 @@ public struct Query<T: Codable> {
         self.collection = collection
     }
     
-    /// Adiciona um predicado à query. Exemplo:
-    ///     query.where("age", .greaterThan(18))
+    /// Adiciona um predicado à query.
     public func `where`(_ field: String, _ op: Operator) -> Self {
         var copy = self
         copy.predicates.append((field, op))
         return copy
     }
     
-    // MARK: - Lazy Query via AsyncThrowingStream
-    
-    /// Retorna um fluxo assíncrono (lazy) de documentos que atendem aos predicados da query.
-    /// Essa função usa AsyncThrowingStream para emitir documentos conforme eles são filtrados.
+    /// Cria um fluxo assíncrono de documentos que atendem aos predicados, usando leitura incremental de cada shard.
     public func fetchStream(from storage: StorageEngine) -> AsyncThrowingStream<T, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    // Carrega os shards da coleção. Suponha que o StorageEngine ofereça esse método.
+                    // Obtém os shards da coleção
                     let shards = try await storage.getShardManagers(for: collection)
                     
+                    // Para cada shard, itera via o método lazy (supondo que shard.loadDocumentsLazy retorna AsyncThrowingStream)
                     for shard in shards {
-                        let docs: [T] = try await shard.loadDocuments()
-                        for doc in docs {
+                        for try await doc in shard.loadDocumentsLazy() as AsyncThrowingStream<T, Error> {
                             let dict = try convertToDictionary(doc)
                             var satisfies = true
                             for (field, op) in predicates {
@@ -69,7 +65,8 @@ public struct Query<T: Codable> {
         }
     }
     
-    // MARK: - Helper para converter um objeto para dicionário
+    // MARK: - Helpers
+    
     private func convertToDictionary(_ value: T) throws -> [String: Any] {
         let data = try JSONEncoder().encode(value)
         let obj = try JSONSerialization.jsonObject(with: data, options: [])
@@ -83,7 +80,6 @@ public struct Query<T: Codable> {
         return dict
     }
     
-    // MARK: - Avaliação dos Predicados
     private func evaluatePredicate(documentValue: Any?, op: Operator) -> Bool {
         switch op {
         case .exists:
@@ -131,7 +127,7 @@ public struct Query<T: Codable> {
         }
     }
     
-    // Compara igualdade tentando valores numéricos antes de usar a comparação textual.
+    // Compara valores tentando primeiro a conversão para Double para operações numéricas
     private func compareEquality(_ value1: Any?, _ value2: Any) -> Bool {
         if let d1 = toDouble(value1), let d2 = toDouble(value2) {
             return d1 == d2
@@ -142,7 +138,6 @@ public struct Query<T: Codable> {
         return false
     }
     
-    // Tenta converter o valor para Double para comparações numéricas.
     private func toDouble(_ value: Any?) -> Double? {
         if let num = value as? NSNumber {
             return num.doubleValue
@@ -159,20 +154,18 @@ public struct Query<T: Codable> {
         return nil
     }
     
-    // Converte um valor para String, se possível.
     private func stringValue(_ value: Any?) -> String? {
-        if let value = value {
-            return "\(value)"
+        if let v = value {
+            return "\(v)"
         }
         return nil
     }
     
-    // Para comparações numéricas: tenta comparar os valores convertidos em Double.
     private func compareNumeric(_ value1: Any?, _ value2: Any, using comparator: (Double, Double) -> Bool) -> Bool {
         if let d1 = toDouble(value1), let d2 = toDouble(value2) {
             return comparator(d1, d2)
         }
-        // Se não for numérico, tenta comparar como string (ordenadas lexicograficamente)
+        // Se não for numérico, tenta comparar as representações de hash como fallback
         if let s1 = stringValue(value1), let s2 = stringValue(value2) {
             return comparator(Double(s1.hashValue), Double(s2.hashValue))
         }

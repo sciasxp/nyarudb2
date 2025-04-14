@@ -115,5 +115,41 @@ final class QueryEngineTests: XCTestCase {
         XCTAssertEqual(results.first?.id, 4)
     }
     
-    // Você pode adicionar mais testes para outros operadores, como notEqual, endsWith, in, exists, etc.
+    func testFetchStreamFiltering() async throws {
+            // Cria um diretório temporário para isolar o teste
+            let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+            
+            // Inicializa o StorageEngine sem particionamento para simplificar
+            let storage = try StorageEngine(
+                path: tempDirectory.path,
+                shardKey: nil,
+                compressionMethod: .none,
+                fileProtectionType: .none
+            )
+            
+            // Insere alguns documentos
+            let model1 = User(id: 1, name: "Alice", age: 30)
+            let model2 = User(id: 2, name: "Bob", age: 25)
+            let model3 = User(id: 3, name: "Charlie", age: 30)
+            try await storage.insertDocument(model1, collection: "People")
+            try await storage.insertDocument(model2, collection: "People")
+            try await storage.insertDocument(model3, collection: "People")
+            
+            // Cria a query para filtrar onde a idade é igual a 30
+            var query = Query<User>(collection: "People")
+            query = query.where("age", .equal(30))
+            
+            // Executa o fetchStream para recuperar os documentos que atendem ao predicado
+            let stream = query.fetchStream(from: storage)
+            var results: [User] = []
+            for try await person in stream {
+                results.append(person)
+            }
+            
+            // Espera-se que apenas os documentos com age == 30 sejam retornados (model1 e model3)
+            XCTAssertEqual(results.count, 2)
+            XCTAssertTrue(results.contains(model1))
+            XCTAssertTrue(results.contains(model3))
+        }
 }
