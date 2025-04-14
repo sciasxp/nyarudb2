@@ -42,7 +42,7 @@ public actor StorageEngine {
 
         // 1. Otimização: Decodificação parcial apenas para chaves necessárias
         let partitionValue = try shardKey.flatMap { key in
-            try extractValue(from: jsonData, key: key)
+            try DynamicDecoder.extractValue(from: jsonData, key: key)
         }
 
         // 2. Gerenciamento eficiente de shards
@@ -56,7 +56,7 @@ public actor StorageEngine {
 
         // 4. Indexação otimizada
         if let indexField = indexField {
-            let key = try extractValue(
+            let key = try DynamicDecoder.extractValue(
                 from: jsonData,
                 key: indexField,
                 forIndex: true
@@ -67,7 +67,11 @@ public actor StorageEngine {
                 default: IndexManager()
             ]
             await indexManager.createIndex(for: indexField)
-            await indexManager.insert(index: indexField, key: key, data: jsonData)
+            await indexManager.insert(
+                index: indexField,
+                key: key,
+                data: jsonData
+            )
             indexManagers[collection] = indexManager
         }
     }
@@ -168,7 +172,7 @@ public actor StorageEngine {
         let shard: Shard
         if let key = shardKey {
             // Usa nossa função extractValue para obter o valor da chave de partição.
-            let partitionValue = try extractValue(from: jsonData, key: key)
+            let partitionValue = try DynamicDecoder.extractValue(from: jsonData, key: key)
             shard = try await shardManager.getOrCreateShard(id: partitionValue)
         } else {
             shard = try await shardManager.getOrCreateShard(id: "default")
@@ -198,7 +202,7 @@ public actor StorageEngine {
         // 7. Se um campo de índice for informado, atualiza a entrada no índice.
         if let indexField = indexField {
             // Extraí o valor do campo de índice no documento atualizado.
-            let key = try extractValue(
+            let key = try DynamicDecoder.extractValue(
                 from: jsonData,
                 key: indexField,
                 forIndex: true
@@ -216,7 +220,11 @@ public actor StorageEngine {
 
             // Atualiza a entrada no índice – a estratégia mais simples aqui é inserir a nova versão,
             // assumindo que se o índice já possui essa chave, o método de insert adicionará o novo dado.
-            await indexManager.insert(index: indexField, key: key, data: jsonData)
+            await indexManager.insert(
+                index: indexField,
+                key: key,
+                data: jsonData
+            )
         }
     }
 
@@ -247,7 +255,7 @@ public actor StorageEngine {
 
             let partitionValue =
                 try shardKey.flatMap { key in
-                    try extractValue(from: jsonData, key: key)
+                    try DynamicDecoder.extractValue(from: jsonData, key: key)
                 } ?? "default"
 
             groups[partitionValue, default: []].append((document, jsonData))
@@ -255,7 +263,7 @@ public actor StorageEngine {
             // Se há um campo de índice, atualiza o índice para cada documento.
             // Aqui usamos a função extractValue com forIndex: true para obter o valor do índice.
             if let indexField = indexField {
-                let indexKey = try extractValue(
+                let indexKey = try DynamicDecoder.extractValue(
                     from: jsonData,
                     key: indexField,
                     forIndex: true
@@ -349,32 +357,6 @@ public actor StorageEngine {
         return shardManager.allShards()
     }
 
-    // MARK: - Métodos auxiliares
-    private func extractValue(
-        from data: Data,
-        key: String,
-        forIndex: Bool = false
-    ) throws -> String {
-        // Converte os dados para um dicionário genérico
-        guard
-            let jsonObject = try JSONSerialization.jsonObject(
-                with: data,
-                options: []
-            ) as? [String: Any]
-        else {
-            throw StorageError.invalidDocument
-        }
-        // Se não encontrar a chave, lança o erro apropriado
-        guard let value = jsonObject[key] else {
-            if forIndex {
-                throw StorageError.indexKeyNotFound(key)
-            }
-            throw StorageError.partitionKeyNotFound(key)
-        }
-        // Converte o valor para String, independente do tipo original
-        return String(describing: value)
-    }
-
     private func getOrCreateShardManager(for collection: String) async throws
         -> ShardManager
     {
@@ -414,7 +396,7 @@ public actor StorageEngine {
             indexManager = newManager
         }
 
-        let key = try extractValue(
+        let key = try DynamicDecoder.extractValue(
             from: jsonData,
             key: indexField,
             forIndex: true
@@ -422,15 +404,4 @@ public actor StorageEngine {
         await indexManager.insert(index: indexField, key: key, data: jsonData)
 
     }
-}
-
-// MARK: - Extensões auxiliares
-private struct DynamicCodingKey: CodingKey {
-    var stringValue: String
-    init?(stringValue: String) {
-        self.stringValue = stringValue
-    }
-
-    var intValue: Int? { nil }
-    init?(intValue: Int) { nil }
 }
