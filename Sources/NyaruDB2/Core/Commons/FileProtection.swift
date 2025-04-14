@@ -1,6 +1,10 @@
-public enum FileProtectionType: String {
-    case none = "NSFileProtectionNone"
-    case complete = "NSFileProtectionComplete"
-    case completeUnlessOpen = "NSFileProtectionCompleteUnlessOpen"
-    case completeUntilFirstUserAuthentication = "NSFileProtectionCompleteUntilFirstUserAuthentication"
+public enum FileProtectionType: String, CaseIterable {
+    case none
+    case complete
+    case completeUnlessOpen
+    case completeUntilFirstUserAuthentication
+    
+    public var systemValue: String {
+        return "NS\(self.rawValue)"
+    }
 }
