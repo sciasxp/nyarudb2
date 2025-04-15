@@ -22,7 +22,7 @@ public actor StorageEngine {
         path: String,
         compressionMethod: CompressionMethod = .none,
         fileProtectionType: FileProtectionType = .none
-        
+
     ) throws {
         self.baseURL = URL(fileURLWithPath: path, isDirectory: true)
         self.compressionMethod = compressionMethod
@@ -77,33 +77,16 @@ public actor StorageEngine {
         }
 
         try await self.statsEngine.updateCollectionMetadata(for: collection)
-    
+
     }
 
     public func fetchDocuments<T: Codable>(from collection: String) async throws
         -> [T]
     {
-        guard let shardManager = activeShardManagers[collection] else {
-            return []
-        }
-
-        let shards = shardManager.allShards()
-
-        // Cria um grupo de tarefas para carregar os documentos de cada shard de forma concorrente.
-        return try await withThrowingTaskGroup(of: [T].self) { group in
-            for shard in shards {
-                group.addTask {
-                    return try await shard.loadDocuments() as [T]
-                }
-            }
-
-            // Combina os resultados de todas as tarefas
-            var results: [T] = []
-            for try await docs in group {
-                results.append(contentsOf: docs)
-            }
-            return results
-        }
+        try await activeShardManagers[collection]?
+            .allShards()
+            .concurrentMap { try await $0.loadDocuments() }
+            .flatMap { $0 } ?? []
     }
 
     public func fetchFromIndex<T: Codable>(
@@ -127,21 +110,12 @@ public actor StorageEngine {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    // Verifica se existe um gerenciador de shards para a coleção
-                    guard let shardManager = activeShardManagers[collection]
-                    else {
-                        continuation.finish()
-                        return
-                    }
-
-                    let shards = shardManager.allShards()
-                    // Itera sobre cada shard e, para cada documento carregado, emite individualmente.
-                    for shard in shards {
-                        let docs: [T] = try await shard.loadDocuments()
-                        for doc in docs {
-                            continuation.yield(doc)
+                    try await activeShardManagers[collection]?
+                        .allShards()
+                        .asyncForEach { shard in
+                            try await shard.loadDocuments()
+                                .forEach { continuation.yield($0) }
                         }
-                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -151,30 +125,21 @@ public actor StorageEngine {
     }
 
     public func deleteDocuments<T: Codable>(
-        where predicate: (T) -> Bool,
+        where predicate: @escaping (T) -> Bool,
         from collection: String
     ) async throws {
-        // Obter o gerenciador de shards para a coleção.
-        guard let shardManager = activeShardManagers[collection] else {
-            return  // Se não existir, nada para deletar.
-        }
-        let shards = shardManager.allShards()
+        guard let shardManager = activeShardManagers[collection] else { return }
 
-        // Para cada shard, carregar os documentos, filtrar os que NÃO satisfazem o predicado e gravar novamente.
-        // Se a coleção estiver particionada, pode ser necessário iterar por todos os shards.
-        for shard in shards {
-            // Carrega os documentos do shard de forma assíncrona.
-            let documents: [T] = try await shard.loadDocuments()
-
-            // Filtra os documentos que não devem ser deletados.
-            let newDocuments = documents.filter { !predicate($0) }
-
-            // Se houve alteração, grava os novos documentos no shard.
-            if newDocuments.count != documents.count {
-                try await shard.saveDocuments(newDocuments)
+        try await shardManager.allShards()
+            .asyncForEach { shard in
+                let docs = try await shard.loadDocuments() as [T]
+                let newDocs = docs.filter { !predicate($0) }
+                if docs.count != newDocs.count {
+                    try await shard.saveDocuments(newDocs)
+                }
             }
-        }
-        try await self.statsEngine.updateCollectionMetadata(for: collection)
+
+        try await statsEngine.updateCollectionMetadata(for: collection)
     }
 
     public func updateDocument<T: Codable>(
@@ -248,36 +213,36 @@ public actor StorageEngine {
         collection: String,
         indexField: String? = nil
     ) async throws {
-        // Se não houver documentos, simplesmente retorne
+
         guard !documents.isEmpty else { return }
 
-        // Obtém ou cria o ShardManager para a coleção
         let shardManager = try await getOrCreateShardManager(for: collection)
 
-        // Para atualizar os índices, vamos assegurar que o IndexManager exista para a coleção,
-        // se indexField for especificado
         if let indexField = indexField, indexManagers[collection] == nil {
             let newManager = IndexManager<String>()
             await newManager.createIndex(for: indexField)
             indexManagers[collection] = newManager
         }
 
-        // Agrupa os documentos (junto com seus jsonData) pelo valor da shardKey.
-        // Se não houver shardKey, utiliza "default" como chave.
-        var groups = [String: [(document: T, jsonData: Data)]]()
-        for document in documents {
-            let jsonData = try JSONEncoder().encode(document)
+        let groups: [String: [(document: T, jsonData: Data)]] =
+            try documents.reduce(into: [:]) { result, document in
+                let jsonData = try JSONEncoder().encode(document)
+                // Consulta a chave de partição configurada para a coleção.
+                let partitionField = collectionPartitionKeys[collection]
+                let partitionValue =
+                    partitionField != nil
+                    ? try DynamicDecoder.extractValue(
+                        from: jsonData,
+                        key: partitionField!
+                    )
+                    : "default"
 
-            // Consulta a chave de partição configurada para a coleção.
-            let partitionField = collectionPartitionKeys[collection]
-            let partitionValue = partitionField != nil ?
-                try DynamicDecoder.extractValue(from: jsonData, key: partitionField!) : "default"
+                result[partitionValue, default: []].append((document, jsonData))
+            }
 
-            groups[partitionValue, default: []].append((document, jsonData))
-
-            // Se há um campo de índice, atualiza o índice para cada documento.
-            // Aqui usamos a função extractValue com forIndex: true para obter o valor do índice.
-            if let indexField = indexField {
+        if let indexField = indexField {
+            try await documents.asyncForEach { document in
+                let jsonData = try JSONEncoder().encode(document)
                 let indexKey = try DynamicDecoder.extractValue(
                     from: jsonData,
                     key: indexField,
@@ -300,36 +265,21 @@ public actor StorageEngine {
             }
         }
 
-        // Para cada grupo (shard) carregue os documentos existentes, anexe os novos e salve uma única vez.
-        for (shardId, groupDocuments) in groups {
-            // Obtém ou cria o shard específico para a partição
+        try await groups.forEachAsync { (shardId, groupDocuments) in
             let shard = try await shardManager.getOrCreateShard(id: shardId)
-            var existingDocs: [T] = try await shard.loadDocuments()
-
-            // Adiciona todos os documentos do grupo
-            for (doc, _) in groupDocuments {
-                existingDocs.append(doc)
-            }
-
-            // Salva o conjunto atualizado de documentos no shard
-            try await shard.saveDocuments(existingDocs)
+            let existingDocs: [T] = try await shard.loadDocuments()
+            let newDocs = groupDocuments.map { $0.document }
+            let updatedDocs = existingDocs + newDocs
+            try await shard.saveDocuments(updatedDocs)
         }
 
         try await self.statsEngine.updateCollectionMetadata(for: collection)
     }
 
     public func countDocuments(in collection: String) async throws -> Int {
-        // Obtém o gerenciador de shards para a coleção
-        guard let shardManager = activeShardManagers[collection] else {
-            return 0
-        }
-        // Soma os documentCount de cada shard
-        let shards = shardManager.allShards()
-        var totalCount = 0
-        for shard in shards {
-            totalCount += shard.metadata.documentCount
-        }
-        return totalCount
+        return activeShardManagers[collection]?.allShards()
+            .map(\.metadata.documentCount)
+            .reduce(0, +) ?? 0
     }
 
     public func dropCollection(_ collection: String) async throws {
@@ -455,9 +405,44 @@ public actor StorageEngine {
         collectionPartitionKeys[collection] = key
     }
 
-    public func collectionDirectory(for collection: String) async throws -> URL {
-        let collectionURL = baseURL.appendingPathComponent(collection, isDirectory: true)
+    public func collectionDirectory(for collection: String) async throws -> URL
+    {
+        let collectionURL = baseURL.appendingPathComponent(
+            collection,
+            isDirectory: true
+        )
         return collectionURL
     }
 
+}
+
+extension Sequence {
+    func asyncForEach(
+        _ operation: (Element) async throws -> Void
+    ) async rethrows {
+        for element in self {
+            try await operation(element)
+        }
+    }
+    func concurrentMap<T>(_ transform: @escaping (Element) async throws -> T)
+        async rethrows -> [T]
+    {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            forEach { element in
+                group.addTask { try await transform(element) }
+            }
+            return try await group.reduce(into: []) { $0.append($1) }
+        }
+    }
+}
+
+extension Dictionary {
+    /// Executa de forma assíncrona a função passada para cada par chave/valor,
+    /// aguardando a conclusão de cada iteração sequencialmente.
+    func forEachAsync(_ body: (Key, Value) async throws -> Void) async rethrows
+    {
+        for (key, value) in self {
+            try await body(key, value)
+        }
+    }
 }
