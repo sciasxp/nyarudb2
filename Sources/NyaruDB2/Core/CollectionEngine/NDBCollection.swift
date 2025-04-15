@@ -32,61 +32,21 @@ public class NDBCollection {
         try await db.bulkInsert(documents, into: metadata.name, indexField: indexField)
     }
 
-    public func findOne<T: Codable>(query: [String: Any]) async throws -> T? {
-
-        let results: [T] = try await db.fetch(from: metadata.name)
-
-        return results.first { document in
-            // Converte o documento para dicionário para verificar os predicados.
-            guard let data = try? JSONEncoder().encode(document),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return false }
-            // Validação simplificada: verifica se cada chave/valor do query está presente e igual no documento.
-            for (key, value) in query {
-                if let docValue = dict[key] as? String,
-                   let queryValue = value as? String {
-                    if docValue != queryValue { return false }
-                } else if let docValue = dict[key] as? Int,
-                          let queryValue = value as? Int {
-                    if docValue != queryValue { return false }
-                } else {
-                    // Se não conseguir comparar, descarta esse documento.
-                    return false
-                }
-            }
-            return true
-        }
+   public func findOne<T: Codable>(
+        query: [String: Any]? = nil,
+        shardKey: String,
+        shardValue: String
+    ) async throws -> T? {
+        return try await _findOne(query: query, shardKey: shardKey, shardValue: shardValue)
     }
 
-    public func findOne<T: Codable>(query: [String: Any], shardKey: String, shardValue: String) async throws -> T? {
-        // Essa implementação é simplificada. Em um cenário real, o StorageEngine teria um método
-        // para buscar documentos apenas no shard desejado.
-        let results: [T] = try await db.fetch(from: metadata.name)
-        let filtered = results.filter { document in
-            guard let data = try? JSONEncoder().encode(document),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let value = dict[shardKey] as? String
-            else { return false }
-            return value == shardValue
-        }
-        // Aplica também os predicados gerais da query, de forma similar ao método anterior.
-        return filtered.first { document in
-            guard let data = try? JSONEncoder().encode(document),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return false }
-            for (key, value) in query {
-                if let docValue = dict[key] as? String,
-                   let queryValue = value as? String {
-                    if docValue != queryValue { return false }
-                } else if let docValue = dict[key] as? Int,
-                          let queryValue = value as? Int {
-                    if docValue != queryValue { return false }
-                } else {
-                    return false
-                }
-            }
-            return true
-        }
+    internal func _findOne<T: Codable>(
+        query: [String: Any]? = nil,
+        shardKey: String? = nil,
+        shardValue: String? = nil
+    ) async throws -> T? {
+        let results: [T] = try await fetch(query: query, shardKey: shardKey, shardValue: shardValue)
+        return results.first
     }
     
     public func update<T: Codable>(_ document: T, matching predicate: @escaping (T) -> Bool) async throws {
@@ -98,10 +58,10 @@ public class NDBCollection {
         shardKey: String? = nil,
         shardValue: String? = nil
     ) async throws -> [T] {
-        // Realiza o full scan na coleção utilizando o StorageEngine
+        // Retrieve all documents from the collection (full scan).
         let results: [T] = try await db.fetch(from: metadata.name)
         
-        // Filtra os resultados com base na shard, se os parâmetros forem informados
+        // Apply shard filtering if specified.
         let resultsFilteredByShard: [T] = {
             guard let shardKey = shardKey, let shardValue = shardValue else { return results }
             return results.filter { document in
@@ -113,23 +73,20 @@ public class NDBCollection {
             }
         }()
         
-        // Se nenhum query específico foi passado, retorna os resultados já filtrados por shard (se houver)
+        // If no additional query filtering is required, return the (possibly shard-filtered) results.
         guard let query = query else { return resultsFilteredByShard }
         
-        // Filtra os resultados adicionais com base nos predicados do query.
+        // Further filter by the additional query predicates.
         let finalResults = resultsFilteredByShard.filter { document in
             guard let data = try? JSONEncoder().encode(document),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else { return false }
             for (key, value) in query {
-                if let docValue = dict[key] as? String,
-                   let queryValue = value as? String {
+                if let docValue = dict[key] as? String, let queryValue = value as? String {
                     if docValue != queryValue { return false }
-                } else if let docValue = dict[key] as? Int,
-                          let queryValue = value as? Int {
+                } else if let docValue = dict[key] as? Int, let queryValue = value as? Int {
                     if docValue != queryValue { return false }
                 } else {
-                    // Caso não seja possível comparar, descarta o documento.
                     return false
                 }
             }

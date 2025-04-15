@@ -352,7 +352,6 @@ final class StorageEngineTests: XCTestCase {
         try await storage.bulkInsertDocuments(documents, collection: "BulkTestCollection", indexField: "name")
 
         let collectionURL = tempDirectory.appendingPathComponent("BulkTestCollection", isDirectory: true)
-        Swift.print("Collection URL: \(collectionURL.path)")
         let fileA = collectionURL.appendingPathComponent("A.nyaru")
         let fileB = collectionURL.appendingPathComponent("B.nyaru")
         let fileC = collectionURL.appendingPathComponent("C.nyaru")
