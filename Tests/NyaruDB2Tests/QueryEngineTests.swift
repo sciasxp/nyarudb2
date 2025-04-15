@@ -83,8 +83,8 @@ final class QueryEngineTests: XCTestCase {
             shardStats: try await engine.getShardStats()
         )
         query.where(
-            "name",
-            .equal("Alice")
+            \Users.name,
+            .equal("Alice" as String)
         )
         let results = try await collect(
             stream: query.fetchStream(from: storage)
@@ -105,7 +105,7 @@ final class QueryEngineTests: XCTestCase {
             shardStats: try await engine.getShardStats()
         )
         query.where(
-            "age",
+            \Users.age,
             .greaterThan(30)
         )
         let results = try await collect(
@@ -129,7 +129,7 @@ final class QueryEngineTests: XCTestCase {
             shardStats: try await engine.getShardStats()
         )
         query.where(
-            "age",
+            \Users.age,
             .between(lower: 30, upper: 40)
         )
         let results = try await collect(
@@ -153,7 +153,7 @@ final class QueryEngineTests: XCTestCase {
             shardStats: try await engine.getShardStats()
         )
         query.where(
-            "name",
+            \Users.name,
             .startsWith("A")
         )
         let results = try await collect(
@@ -175,7 +175,7 @@ final class QueryEngineTests: XCTestCase {
             shardStats: try await engine.getShardStats()
         )
         query.where(
-            "name",
+            \Users.name,
             .contains("v")
         )
         let results = try await collect(
@@ -219,7 +219,7 @@ final class QueryEngineTests: XCTestCase {
             indexStats: try await engine.getIndexStats(),
             shardStats: try await engine.getShardStats()
         )
-        query.where("age", .equal(30 as Int))
+        query.where(\Users.age, .equal(30 as Int))
 
         // Executa o fetchStream para recuperar os documentos que atendem ao predicado
         let stream = query.fetchStream(from: storage)

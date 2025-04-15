@@ -6,6 +6,7 @@ public struct Query<T: Codable> {
     private var predicates: [(field: String, op: QueryOperator)] = []
     private let storage: StorageEngine
     private let planner: QueryPlanner
+    private var keyPathPredicates: [((T) -> AnyHashable, QueryOperator)] = []
 
     // Initialize the query with storage and statistics for planning.
     public init(
@@ -23,8 +24,14 @@ public struct Query<T: Codable> {
     }
 
     /// Adds a predicate to the query.
-    public mutating func `where`(_ field: String, _ op: QueryOperator) {
-        predicates.append((field: field, op: op))
+    public mutating func `where`<V: Hashable>(
+        _ keyPath: KeyPath<T, V>,
+        _ op: QueryOperator
+    ) {
+        let predicate: (T) -> AnyHashable = { doc in
+            return doc[keyPath: keyPath] as AnyHashable
+        }
+        keyPathPredicates.append((predicate, op))
     }
 
     /// Returns an execution plan for debugging or optimization purposes.
@@ -87,23 +94,20 @@ public struct Query<T: Codable> {
         let allShards = try await storage.getShardManagers(for: collection)
 
         // Aplica o pruning dos shards com base em dados de ShardStat.
-        // Exemplo: se o shard não possuir documentos (docCount == 0), pula.
-        // Isso pode ser refinado usando ranges ou outras estatísticas.
+        // Por exemplo, se o shard não possuir documentos (docCount == 0), ele é ignorado.
         let shards = allShards.filter { shard in
             return shard.metadata.documentCount > 0
-            // Se tiver um método mais avançado, por exemplo:
+            // Para uma lógica mais avançada, por exemplo:
             // return shard.metadata.toShardStat().matches(any: predicates)
         }
 
-        // Processa os shards em paralelo usando um TaskGroup para filtrar documentos
+        // Processa os shards em paralelo usando um TaskGroup para filtrar os documentos
         return try await withThrowingTaskGroup(of: [T].self) { group in
             for shard in shards {
                 group.addTask {
                     let docs: [T] = try await shard.loadDocuments()
-                    // Filtra usando os predicados da query
-                    return docs.filter {
-                        self.evaluateDocument($0, with: self.predicates)
-                    }
+                    // Filtra os documentos usando a nova função evaluateDocument que utiliza KeyPathPredicates
+                    return docs.filter { self.evaluateDocument($0) }
                 }
             }
             var results = [T]()
@@ -120,7 +124,7 @@ public struct Query<T: Codable> {
         let stream: AsyncThrowingStream<T, Error> =
             await storage.fetchDocumentsLazy(from: collection)
         for try await doc in stream {
-            if evaluateDocument(doc, with: predicates) {
+            if self.evaluateDocument(doc) {
                 results.append(doc)
             }
         }
@@ -128,32 +132,93 @@ public struct Query<T: Codable> {
         return results
     }
 
-    private func evaluateDocument(
-        _ doc: T,
-        with predicates: [(field: String, op: QueryOperator)]
-    ) -> Bool {
-        let mirror = Mirror(reflecting: doc)
+    internal func evaluateDocument(_ doc: T) -> Bool {
+        return keyPathPredicates.allSatisfy { (predicate, op) in
+            evaluateValue(predicate(doc), op: op)
+        }
+    }
 
-        for predicate in predicates {
-            // Usa a extensão abaixo para extrair o valor do campo
-            guard let value = mirror.getField(named: predicate.field) else {
-                return false
+    private func evaluateValue(_ value: AnyHashable, op: QueryOperator) -> Bool
+    {
+        switch op {
+        case .equal(let target):
+            return value == target
+        case .notEqual(let target):
+            return value != target
+        case .range(let lower, let upper),
+            .between(let lower, let upper):
+            if let v = value as? Int, let l = lower as? Int,
+                let u = upper as? Int
+            {
+                return v >= l && v <= u
             }
+            if let v = value as? Double, let l = lower as? Double,
+                let u = upper as? Double
+            {
+                return v >= l && v <= u
+            }
+            return false
+        case .greaterThan(let target):
+            if let v = value as? Int, let t = target as? Int {
+                return v > t
+            }
+            if let v = value as? Double, let t = target as? Double {
+                return v > t
+            }
+            return false
+        case .greaterThanOrEqual(let target):
+            if let v = value as? Int, let t = target as? Int {
+                return v >= t
+            }
+            if let v = value as? Double, let t = target as? Double {
+                return v >= t
+            }
+            return false
+        case .lessThan(let target):
+            if let v = value as? Int, let t = target as? Int {
+                return v < t
+            }
+            if let v = value as? Double, let t = target as? Double {
+                return v < t
+            }
+            return false
+        case .lessThanOrEqual(let target):
+            if let v = value as? Int, let t = target as? Int {
+                return v <= t
+            }
+            if let v = value as? Double, let t = target as? Double {
+                return v <= t
+            }
+            return false
+        case .contains(let substring):
+            if let s = value as? String {
+                return s.contains(substring)
+            }
+            return false
+        case .startsWith(let prefix):
+            if let s = value as? String {
+                return s.hasPrefix(prefix)
+            }
+            return false
+        case .endsWith(let suffix):
+            if let s = value as? String {
+                return s.hasSuffix(suffix)
+            }
+            return false
 
-            switch predicate.op {
-            case .equal(let target):
-                if !isEqual(value, target) { return false }
-            case .notEqual(let target):
-                if isEqual(value, target) { return false }
-            case .range(let lower, let upper):
-                if !isInRange(value, lower: lower, upper: upper) {
-                    return false
+        case .in(let values):
+            for candidate in values {
+                if let candidateHashable = candidate as? AnyHashable,
+                    candidateHashable == value
+                {
+                    return true
                 }
-            default: break
             }
+            return false
+        default:
+            return false
         }
 
-        return true
     }
 
     private func isEqual(_ a: Any, _ b: AnyHashable) -> Bool {
@@ -191,25 +256,14 @@ public struct Query<T: Codable> {
                     let shards = try await storage.getShardManagers(
                         for: collection
                     )
-
-                    // Para cada shard, itera via o método lazy (supondo que shard.loadDocumentsLazy retorna AsyncThrowingStream)
+                    // Itera sobre os shards
                     for shard in shards {
+                        // Para cada documento do shard, via lazy stream
                         for try await doc in shard.loadDocumentsLazy()
                             as AsyncThrowingStream<T, Error>
                         {
-                            let dict = try convertToDictionary(doc)
-                            var satisfies = true
-                            for (field, op) in predicates {
-                                let fieldValue = dict[field]
-                                if !evaluatePredicate(
-                                    documentValue: fieldValue,
-                                    op: op
-                                ) {
-                                    satisfies = false
-                                    break
-                                }
-                            }
-                            if satisfies {
+                            // Usa nossa função evaluateDocument que acessa os keyPathPredicates
+                            if self.evaluateDocument(doc) {
                                 continuation.yield(doc)
                             }
                         }
@@ -323,9 +377,9 @@ public struct Query<T: Codable> {
     }
 }
 
-extension Mirror {
-    /// Retorna o valor do primeiro filho cujo label seja igual ao nome fornecido
-    func getField(named name: String) -> Any? {
-        return self.children.first { $0.label == name }?.value
-    }
-}
+// extension Mirror {
+//     /// Retorna o valor do primeiro filho cujo label seja igual ao nome fornecido
+//     func getField(named name: String) -> Any? {
+//         return self.children.first { $0.label == name }?.value
+//     }
+// }

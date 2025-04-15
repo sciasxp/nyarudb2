@@ -49,7 +49,7 @@ public enum QueryOperator: CustomStringConvertible {
     case lessThanOrEqual(Any)
     case greaterThan(Any)
     case greaterThanOrEqual(Any)
-    case between(lower: Any, upper: Any)
+    case between(lower: AnyHashable, upper: AnyHashable)
     case `in`([Any])
     case exists
     case notExists

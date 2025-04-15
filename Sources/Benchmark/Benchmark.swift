@@ -195,7 +195,7 @@ public final class NyaruDBBenchmark {
                     indexStats: try await db.getIndexStats(),
                     shardStats: try await db.getShardStats()
                 )
-                query.where("category", .equal("Test"))
+                query.where(\TestDocument.category, .equal("Test"))
                 let stream = query.fetchStream(from: db.storage)
                 for try await _ in stream {}
             }

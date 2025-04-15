@@ -114,7 +114,7 @@ final class QueryEngineIndexTests: XCTestCase {
             shardStats: shardStats
         )
         // Adiciona o predicado de igualdade para o campo "name"
-        query.where("name", .equal("Alice"))
+        query.where(\TestModel.name, .equal("Alice"))
 
         // Executa a query usando a estratégia indexOnly (via fetchFromIndex)
         let results = try await query.execute()
