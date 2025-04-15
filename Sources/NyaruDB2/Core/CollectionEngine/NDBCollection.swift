@@ -14,25 +14,24 @@ public struct CollectionMetadata: Codable {
 
 public class NDBCollection {
     public let metadata: CollectionMetadata
-    private let db: NyaruDB2
+    private let storage: StorageEngine
 
-    public init(db: NyaruDB2, name: String, indexes: [String] = [], partitionKey: String) {
-        self.db = db
+    public init(storage: StorageEngine, name: String, indexes: [String] = [], partitionKey: String) {
+        self.storage = storage
         self.metadata = CollectionMetadata(name: name, indexes: indexes, partitionKey: partitionKey)
     }
 
     public func insert<T: Codable>(_ document: T) async throws {
-
         let indexField = metadata.indexes.first
-        try await db.insert(document, into: metadata.name, indexField: indexField)
+        try await storage.insertDocument(document, collection: metadata.name, indexField: indexField)
     }
 
     public func bulkInsert<T: Codable>(_ documents: [T]) async throws {
         let indexField = metadata.indexes.first
-        try await db.bulkInsert(documents, into: metadata.name, indexField: indexField)
+        try await storage.bulkInsertDocuments(documents, collection: metadata.name, indexField: indexField)
     }
 
-   public func findOne<T: Codable>(
+    public func findOne<T: Codable>(
         query: [String: Any]? = nil,
         shardKey: String,
         shardValue: String
@@ -40,7 +39,7 @@ public class NDBCollection {
         return try await _findOne(query: query, shardKey: shardKey, shardValue: shardValue)
     }
 
-    internal func _findOne<T: Codable>(
+    private func _findOne<T: Codable>(
         query: [String: Any]? = nil,
         shardKey: String? = nil,
         shardValue: String? = nil
@@ -48,9 +47,9 @@ public class NDBCollection {
         let results: [T] = try await fetch(query: query, shardKey: shardKey, shardValue: shardValue)
         return results.first
     }
-    
+
     public func update<T: Codable>(_ document: T, matching predicate: @escaping (T) -> Bool) async throws {
-        try await db.update(document, in: metadata.name, matching: predicate)
+        try await storage.updateDocument(document, in: metadata.name, matching: predicate)
     }
 
     public func fetch<T: Codable>(
@@ -58,10 +57,10 @@ public class NDBCollection {
         shardKey: String? = nil,
         shardValue: String? = nil
     ) async throws -> [T] {
-        // Retrieve all documents from the collection (full scan).
-        let results: [T] = try await db.fetch(from: metadata.name)
-        
-        // Apply shard filtering if specified.
+        // Retrieve all documents from the collection (full scan)
+        let results: [T] = try await storage.fetchDocuments(from: metadata.name)
+
+        // Apply shard filtering if specified
         let resultsFilteredByShard: [T] = {
             guard let shardKey = shardKey, let shardValue = shardValue else { return results }
             return results.filter { document in
@@ -72,11 +71,9 @@ public class NDBCollection {
                 return value == shardValue
             }
         }()
-        
-        // If no additional query filtering is required, return the (possibly shard-filtered) results.
+
         guard let query = query else { return resultsFilteredByShard }
-        
-        // Further filter by the additional query predicates.
+
         let finalResults = resultsFilteredByShard.filter { document in
             guard let data = try? JSONEncoder().encode(document),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -92,11 +89,10 @@ public class NDBCollection {
             }
             return true
         }
-        
         return finalResults
     }
 
     public func delete<T: Codable>(where predicate: @escaping (T) -> Bool) async throws {
-        try await db.delete(where: predicate, from: metadata.name)
+        try await storage.deleteDocuments(where: predicate, from: metadata.name)
     }
 }

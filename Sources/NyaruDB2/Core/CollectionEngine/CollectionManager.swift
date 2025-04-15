@@ -22,8 +22,8 @@ public class CollectionManager {
     ///   - partitionKey: Campo usado para particionamento dos documentos na coleção.
     ///
     /// - Returns: A instância de NyaruCollection criada.
-    public func createCollection(db: NyaruDB2, name: String, indexes: [String] = [], partitionKey: String) -> NDBCollection {
-        let newCollection = NDBCollection(db: db, name: name, indexes: indexes, partitionKey: partitionKey)
+    public func createCollection(storage: StorageEngine, name: String, indexes: [String] = [], partitionKey: String) -> NDBCollection {
+        let newCollection = NDBCollection(storage: storage, name: name, indexes: indexes, partitionKey: partitionKey)
         collections[name] = newCollection
         return newCollection
     }

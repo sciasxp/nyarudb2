@@ -9,14 +9,30 @@ struct TestDocument: Codable, Equatable {
 
 final class NDBCollectionCRUDTests: XCTestCase {
     
-    var db: NyaruDB2!
+    var storage: StorageEngine!
     var testCollection: NDBCollection!
     var tempPath: String!
     
     override func setUp() async throws {
+        // Create a unique temporary directory for the test.
         tempPath = NSTemporaryDirectory().appending(UUID().uuidString)
-        db = try NyaruDB2(path: tempPath, compressionMethod: .none, fileProtectionType: .none)
-        testCollection = NDBCollection(db: db, name: "TestCollection", indexes: ["id"], partitionKey: "created_at")
+        let tempURL = URL(fileURLWithPath: tempPath)
+        try FileManager.default.createDirectory(at: tempURL, withIntermediateDirectories: true)
+        
+        // Initialize the StorageEngine.
+        storage = try StorageEngine(
+            path: tempPath,
+            compressionMethod: .none,
+            fileProtectionType: .none
+        )
+        
+        // Instantiate the collection using the storage instance.
+        testCollection = NDBCollection(
+            storage: storage,
+            name: "TestCollection",
+            indexes: ["id"],
+            partitionKey: "created_at"
+        )
     }
     
     override func tearDown() async throws {
@@ -24,7 +40,7 @@ final class NDBCollectionCRUDTests: XCTestCase {
     }
     
     func testCRUDOperations() async throws {
-        // 1. Insert
+        // 1. Insert two documents.
         let doc1 = TestDocument(id: 1, name: "Alice", created_at: "2022-01-01")
         let doc2 = TestDocument(id: 2, name: "Bob", created_at: "2022-01-01")
         
@@ -32,30 +48,28 @@ final class NDBCollectionCRUDTests: XCTestCase {
         try await testCollection.insert(doc2)
         
         var fetched: [TestDocument] = try await testCollection.fetch()
-        XCTAssertEqual(fetched.count, 2, "Após inserção, deve haver 2 documentos")
+        XCTAssertEqual(fetched.count, 2, "After insertion, there should be 2 documents")
         
-        // 2. Read/FindOne
+        // 2. Read: findOne using a directed query.
         let query: [String: Any] = ["id": 1]
         let found: TestDocument? = try await testCollection.findOne(query: query, shardKey: "created_at", shardValue: "2022-01-01")
-        XCTAssertNotNil(found, "findOne deve retornar um documento")
-        XCTAssertEqual(found?.name, "Alice", "O documento encontrado deve ter nome 'Alice'")
+        XCTAssertNotNil(found, "findOne should return a document")
+        XCTAssertEqual(found?.name, "Alice", "The found document should have the name 'Alice'")
         
-        // 3. Update
-        // Atualiza doc1 de "Alice" para "Alicia"
+        // 3. Update: change doc1's name from 'Alice' to 'Alicia'
         var updatedDoc1 = doc1
         updatedDoc1.name = "Alicia"
         try await testCollection.update(updatedDoc1, matching: { (doc: TestDocument) in doc.id == 1 })
         
         fetched = try await testCollection.fetch()
         let updated = fetched.first { $0.id == 1 }
-        XCTAssertEqual(updated?.name, "Alicia", "O nome do documento atualizado deve ser 'Alicia'")
+        XCTAssertEqual(updated?.name, "Alicia", "The updated document's name should be 'Alicia'")
         
-        // 4. Delete
-        // Remove o documento com id == 2 (Bob)
-        try await testCollection.delete(where: { (doc: TestDocument) in doc.id == 2 })
+        // 4. Delete: remove the document with id == 2 (Bob)
+        try await testCollection.delete { (doc: TestDocument) in doc.id == 2 }
         
         fetched = try await testCollection.fetch()
-        XCTAssertEqual(fetched.count, 1, "Após deleção, deve sobrar apenas 1 documento")
-        XCTAssertEqual(fetched.first?.id, 1, "O documento restante deve ter id 1")
+        XCTAssertEqual(fetched.count, 1, "After deletion, there should be only 1 document left")
+        XCTAssertEqual(fetched.first?.id, 1, "The remaining document should have id 1")
     }
 }
