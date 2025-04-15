@@ -376,10 +376,3 @@ public struct Query<T: Codable> {
         return false
     }
 }
-
-// extension Mirror {
-//     /// Retorna o valor do primeiro filho cujo label seja igual ao nome fornecido
-//     func getField(named name: String) -> Any? {
-//         return self.children.first { $0.label == name }?.value
-//     }
-// }

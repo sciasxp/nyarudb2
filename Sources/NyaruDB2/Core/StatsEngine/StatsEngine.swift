@@ -6,6 +6,12 @@
 //
 import Foundation
 
+public struct ShardMetadataInfo: Codable {
+    public let id: String
+    public let url: URL
+    public let metadata: ShardMetadata
+}
+
 public struct CollectionStats: Codable {
     public let collectionName: String
     public let numberOfShards: Int
@@ -56,21 +62,21 @@ public struct IndexStat {
             }
             return nil
         }
-        
+
         var cost = 0
         for (key, frequency) in valueDistribution {
             if let keyValue = toDouble(key),
-               let lowerValue = toDouble(lower),
-               let upperValue = toDouble(upper),
-               keyValue >= lowerValue, keyValue <= upperValue {
+                let lowerValue = toDouble(lower),
+                let upperValue = toDouble(upper),
+                keyValue >= lowerValue, keyValue <= upperValue
+            {
                 cost += frequency
             }
         }
-        
+
         return cost > 0 ? cost : totalCount / 4
     }
 }
-
 
 public struct ShardStat {
     public let docCount: Int
@@ -212,50 +218,48 @@ public actor StatsEngine {
     }
 
     public func getIndexStats() async -> [String: IndexStat] {
-    var stats = [String: IndexStat]()
-    // Iterate over each collection and its associated IndexManager.
-    for (collection, indexManager) in await storage.indexManagers {
-        let metrics = await indexManager.getMetrics()
-        let counts = await indexManager.getIndexCounts()
-        var combinedTotalCount = 0
-        var combinedUniqueValuesCount = 0
-        var combinedDistribution = [AnyHashable: Int]()
-        var combinedAccessCount = 0
-        var latestAccess = Date.distantPast
-        
-        // Combine metrics from each index field of the collection.
-        for (field, metric) in metrics {
-            let fieldTotal = counts[field] ?? 0
-            // In a proper implementation, the B-Tree should yield the count of unique keys.
-            // Here, we assume fieldTotal as the unique count for simplicity.
-            let fieldUnique = fieldTotal
+        var stats = [String: IndexStat]()
+        // Iterate over each collection and its associated IndexManager.
+        for (collection, indexManager) in await storage.indexManagers {
+            let metrics = await indexManager.getMetrics()
+            let counts = await indexManager.getIndexCounts()
+            var combinedTotalCount = 0
+            var combinedUniqueValuesCount = 0
+            var combinedDistribution = [AnyHashable: Int]()
+            var combinedAccessCount = 0
+            var latestAccess = Date.distantPast
 
-            combinedTotalCount += fieldTotal
-            combinedUniqueValuesCount += fieldUnique
-            combinedAccessCount += metric.accessCount
-            if metric.lastAccess > latestAccess {
-                latestAccess = metric.lastAccess
+            // Combine metrics from each index field of the collection.
+            for (field, metric) in metrics {
+                let fieldTotal = counts[field] ?? 0
+                // In a proper implementation, the B-Tree should yield the count of unique keys.
+                // Here, we assume fieldTotal as the unique count for simplicity.
+                let fieldUnique = fieldTotal
+
+                combinedTotalCount += fieldTotal
+                combinedUniqueValuesCount += fieldUnique
+                combinedAccessCount += metric.accessCount
+                if metric.lastAccess > latestAccess {
+                    latestAccess = metric.lastAccess
+                }
+
+                // Aggregate the value distribution by summing the counts for each key.
+                for (key, count) in metric.valueDistribution {
+                    combinedDistribution[key, default: 0] += count
+                }
             }
 
-            // Aggregate the value distribution by summing the counts for each key.
-            for (key, count) in metric.valueDistribution {
-                combinedDistribution[key, default: 0] += count
-            }
+            let indexStat = IndexStat(
+                totalCount: combinedTotalCount,
+                uniqueValuesCount: combinedUniqueValuesCount,
+                valueDistribution: combinedDistribution,
+                accessCount: combinedAccessCount,
+                lastAccess: latestAccess
+            )
+            stats[collection] = indexStat
         }
-        
-        let indexStat = IndexStat(
-            totalCount: combinedTotalCount,
-            uniqueValuesCount: combinedUniqueValuesCount,
-            valueDistribution: combinedDistribution,
-            accessCount: combinedAccessCount,
-            lastAccess: latestAccess
-        )
-        stats[collection] = indexStat
+        return stats
     }
-    return stats
-}
-
-
 
     public func getShardStats() async throws -> [ShardStat] {
         var shardStats = [ShardStat]()
@@ -269,5 +273,21 @@ public actor StatsEngine {
             }
         }
         return shardStats
+    }
+
+    public func updateCollectionMetadata(for collection: String) async throws {
+        let stats = try await getCollectionStats(collection)
+
+        // Para obter o diretório da coleção, podemos chamar um método público em StorageEngine.
+        // Se não existir, crie um método, por exemplo, 'collectionDirectory(for:)' em StorageEngine.
+        let collectionDirectory = try await storage.collectionDirectory(
+            for: collection
+        )
+
+        let aggregatedMetaURL = collectionDirectory.appendingPathComponent(
+            "\(collection).nyaru.meta.json"
+        )
+        let metadataData = try JSONEncoder().encode(stats)
+        try metadataData.write(to: aggregatedMetaURL, options: .atomic)
     }
 }

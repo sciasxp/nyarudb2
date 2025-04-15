@@ -54,8 +54,6 @@ public class ShardManager {
 
         try await shard.saveDocuments([] as [String])
 
-        try saveMetadata(for: shard)
-
         return shard
     }
 
@@ -84,18 +82,42 @@ public class ShardManager {
     }
 
     public func loadShards() {
-        shards.removeAll()
         guard
             let files = try? FileManager.default.contentsOfDirectory(
                 at: baseURL,
                 includingPropertiesForKeys: nil
             )
-        else { return }
-        for url in files where url.pathExtension == "shard" {
-            let id = url.deletingPathExtension().lastPathComponent
-            let metadata = (try? loadMetadata(from: url)) ?? ShardMetadata()
-            shards[id] = Shard(id: id, url: url, metadata: metadata)
+        else {
+            print(
+                "[ShardManager] Failed to read directory contents at \(baseURL)"
+            )
+            return
         }
+
+        let loadedShards =
+            files
+            .filter { $0.pathExtension == "shard" }
+            .compactMap { url -> (String, Shard)? in
+                let id = url.deletingPathExtension().lastPathComponent
+                do {
+                    let metadata = try loadMetadata(from: url)
+                    print("[ShardManager] Successfully loaded shard \(id)")
+                    return (id, Shard(id: id, url: url, metadata: metadata))
+                } catch {
+                    print(
+                        "[ShardManager] Error loading metadata for shard \(id): \(error.localizedDescription)"
+                    )
+                    print(
+                        "[ShardManager] Creating shard \(id) with default metadata"
+                    )
+                    return (
+                        id, Shard(id: id, url: url, metadata: ShardMetadata())
+                    )
+                }
+            }
+
+        shards = Dictionary(uniqueKeysWithValues: loadedShards)
+        print("[ShardManager] Loaded \(shards.count) shards")
     }
 
     private func startAutoMergeProcess() {
@@ -116,6 +138,7 @@ public class ShardManager {
     private func mergeSmallShards() async throws {
         let threshold = 100
 
+        // Seleção de shards candidatos
         let candidateShards = shards.values
             .filter { $0.metadata.documentCount < threshold }
             .sorted { $0.metadata.createdAt < $1.metadata.createdAt }
@@ -124,75 +147,19 @@ public class ShardManager {
 
         let primaryShard = candidateShards.first!
 
-        var accumulatedDocs: [Any] = []
+        // Processamento dos shards secundários
+        let accumulatedDocs = try await candidateShards.dropFirst()
+            .asyncCompactMap { try await processAndRemoveShard($0) }
+            .flatMap { $0 }
 
-        // Processa os shards candidatos, exceto o principal
-        for shard in candidateShards.dropFirst() {
-            // Lê os dados brutos do shard
-            let rawData = try Data(contentsOf: shard.url)
-            // Descomprime os dados usando o método associado ao shard
-            let decompressedData = try decompressData(
-                rawData,
-                method: shard.compressionMethod
-            )
-            // Converte o JSON para um array de Any (pode ser dicionário, String, número, etc.)
-            guard
-                let docs = try JSONSerialization.jsonObject(
-                    with: decompressedData,
-                    options: []
-                ) as? [Any]
-            else {
-                continue
-            }
-            guard !docs.isEmpty else { continue }
-            accumulatedDocs.append(contentsOf: docs)
-
-            // Remove o shard do disco
-            do {
-                try FileManager.default.removeItem(at: shard.url)
-                let metaURL = shard.url.appendingPathExtension("meta.json")
-                try? FileManager.default.removeItem(at: metaURL)
-            } catch {
-                print("Warning: Failed to remove shard \(shard.id): \(error)")
-            }
-
-            // Remove o shard do dicionário de shards
-            if let keyToRemove = shards.first(where: { $0.value === shard })?
-                .key
-            {
-                shards.removeValue(forKey: keyToRemove)
-            }
-        }
-
-        // Lê os documentos já existentes no shard principal
-        let primaryRawData = try Data(contentsOf: primaryShard.url)
-        let primaryDecompressedData = try decompressData(
-            primaryRawData,
-            method: primaryShard.compressionMethod
-        )
-        let primaryDocs =
-            (try? JSONSerialization.jsonObject(
-                with: primaryDecompressedData,
-                options: []
-            )) as? [Any] ?? []
-
-        // Combina os documentos
+        // Processamento do shard principal
+        let primaryDocs = try await loadShardDocuments(primaryShard)
         let mergedDocs = primaryDocs + accumulatedDocs
 
-        // Serializa o array combinado de volta para JSON
-        let mergedData = try JSONSerialization.data(
-            withJSONObject: mergedDocs,
-            options: []
-        )
-        // Comprime os dados de volta
-        let compressedMergedData = try compressData(
-            mergedData,
-            method: primaryShard.compressionMethod
-        )
-        // Escreve no arquivo do shard principal
-        try compressedMergedData.write(to: primaryShard.url, options: .atomic)
+        // Salvando os documentos mesclados
+        try saveMergedDocuments(mergedDocs, to: primaryShard)
 
-        // Atualiza os metadados do shard principal
+        // Atualização de metadados
         primaryShard.updateMetadata(
             documentCount: mergedDocs.count,
             updatedAt: Date()
@@ -203,16 +170,55 @@ public class ShardManager {
         )
     }
 
-    private func metadataURL(for shard: Shard) -> URL {
-        shard.url.appendingPathExtension("meta.json")
+    // MARK: - Funções auxiliares
+
+    private func processAndRemoveShard(_ shard: Shard) async throws -> [Any]? {
+        do {
+            let docs = try await loadShardDocuments(shard)
+            try removeShardFiles(shard)
+            removeShardFromMemory(shard)
+            return docs.isEmpty ? nil : docs
+        } catch {
+            print("Warning: Failed to process shard \(shard.id): \(error)")
+            return nil
+        }
     }
 
-    private func saveMetadata(for shard: Shard) throws {
-        let data = try JSONEncoder().encode(shard.metadata)
-        do {
-            try data.write(to: metadataURL(for: shard), options: .atomic)
-        } catch {
-            throw ShardManagerError.failedToSaveShard(shardID: shard.id)
+    private func loadShardDocuments(_ shard: Shard) async throws -> [Any] {
+        let data = try Data(contentsOf: shard.url)
+        let decompressed = try decompressData(
+            data,
+            method: shard.compressionMethod
+        )
+        let json = try JSONSerialization.jsonObject(
+            with: decompressed,
+            options: []
+        )
+        return (json as? [Any]) ?? []
+    }
+
+    private func saveMergedDocuments(_ documents: [Any], to shard: Shard) throws
+    {
+        let jsonData = try JSONSerialization.data(
+            withJSONObject: documents,
+            options: []
+        )
+        let compressedData = try compressData(
+            jsonData,
+            method: shard.compressionMethod
+        )
+        try compressedData.write(to: shard.url, options: .atomic)
+    }
+
+    private func removeShardFiles(_ shard: Shard) throws {
+        try FileManager.default.removeItem(at: shard.url)
+        let metaURL = shard.url.appendingPathExtension("meta.json")
+        try? FileManager.default.removeItem(at: metaURL)
+    }
+
+    private func removeShardFromMemory(_ shard: Shard) {
+        if let key = shards.first(where: { $0.value === shard })?.key {
+            shards.removeValue(forKey: key)
         }
     }
 
@@ -226,15 +232,30 @@ public class ShardManager {
         return Array(shards.values)
     }
 
-
-    
-
-
+    public func cleanupEmptyShards() async throws {
+        try shards
+            .filter { $0.value.metadata.documentCount == 0 }
+            .forEach { key, shard in
+                try FileManager.default.removeItem(at: shard.url)
+                try? FileManager.default.removeItem(
+                    at: shard.url.appendingPathExtension("meta.json")
+                )
+                shards.removeValue(forKey: key)
+            }
+    }
 
 }
 
-public struct ShardMetadataInfo: Codable {
-    public let id: String
-    public let url: URL
-    public let metadata: ShardMetadata
+extension Sequence {
+    func asyncCompactMap<T>(
+        _ transform: (Element) async throws -> T?
+    ) async rethrows -> [T] {
+        var results = [T]()
+        for element in self {
+            if let transformed = try await transform(element) {
+                results.append(transformed)
+            }
+        }
+        return results
+    }
 }
