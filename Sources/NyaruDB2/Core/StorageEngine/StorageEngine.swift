@@ -171,61 +171,71 @@ public actor StorageEngine {
         }
     }
 
-public func updateDocument<T: Codable>(
-    _ document: T,
-    in collection: String,
-    matching predicate: (T) -> Bool,
-    indexField: String? = nil
-) async throws {
-    // 1. Codifica o documento atualizado
-    let jsonData = try JSONEncoder().encode(document)
+    public func updateDocument<T: Codable>(
+        _ document: T,
+        in collection: String,
+        matching predicate: (T) -> Bool,
+        indexField: String? = nil
+    ) async throws {
+        // 1. Codifica o documento atualizado
+        let jsonData = try JSONEncoder().encode(document)
 
-    // 2. Determina o shard onde o documento deve residir.
-    // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
-    let shardManager = try await getOrCreateShardManager(for: collection)
-    let shard: Shard
-    if let key = shardKey {
-        let partitionValue: String = try DynamicDecoder.extractValue(from: jsonData, key: key)
-        shard = try await shardManager.getOrCreateShard(id: partitionValue)
-    } else {
-        shard = try await shardManager.getOrCreateShard(id: "default")
-    }
-
-    // 3. Carrega os documentos existentes no shard
-    var documents: [T] = try await shard.loadDocuments()
-
-    // 4. Procura pelo documento correspondente utilizando o predicado fornecido (ex.: por ID)
-    guard let indexToUpdate = documents.firstIndex(where: predicate) else {
-        throw StorageEngine.StorageError.updateDocumentNotFound
-    }
-
-    // 5. Atualiza o documento no array local
-    documents[indexToUpdate] = document
-
-    // 6. Salva os documentos atualizados de volta ao shard
-    try await shard.saveDocuments(documents)
-    
-    // 7. Se um campo de índice for informado, atualiza a entrada no índice
-    if let indexField = indexField {
-        // Extrai o valor do campo de índice (usando forIndex=true)
-        let key: String = try DynamicDecoder.extractValue(from: jsonData, key: indexField, forIndex: true)
-        
-        // Obtém ou cria o IndexManager para a coleção
-        var indexManager: IndexManager<String>
-        if let existing = indexManagers[collection] {
-            indexManager = existing
+        // 2. Determina o shard onde o documento deve residir.
+        // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
+        let shardManager = try await getOrCreateShardManager(for: collection)
+        let shard: Shard
+        if let key = shardKey {
+            let partitionValue: String = try DynamicDecoder.extractValue(
+                from: jsonData,
+                key: key
+            )
+            shard = try await shardManager.getOrCreateShard(id: partitionValue)
         } else {
-            indexManager = IndexManager<String>()
-            await indexManager.createIndex(for: indexField)
-            indexManagers[collection] = indexManager
+            shard = try await shardManager.getOrCreateShard(id: "default")
         }
-        
-        // Atualiza a entrada no índice. A estratégia aplicada aqui é inserir a nova versão;
-        // o método de insert deve estar preparado para acumular entradas quando a chave já existir.
-        await indexManager.insert(index: indexField, key: key, data: jsonData)
-    }
-}
 
+        // 3. Carrega os documentos existentes no shard
+        var documents: [T] = try await shard.loadDocuments()
+
+        // 4. Procura pelo documento correspondente utilizando o predicado fornecido (ex.: por ID)
+        guard let indexToUpdate = documents.firstIndex(where: predicate) else {
+            throw StorageEngine.StorageError.updateDocumentNotFound
+        }
+
+        // 5. Atualiza o documento no array local
+        documents[indexToUpdate] = document
+
+        // 6. Salva os documentos atualizados de volta ao shard
+        try await shard.saveDocuments(documents)
+
+        // 7. Se um campo de índice for informado, atualiza a entrada no índice
+        if let indexField = indexField {
+            // Extrai o valor do campo de índice (usando forIndex=true)
+            let key: String = try DynamicDecoder.extractValue(
+                from: jsonData,
+                key: indexField,
+                forIndex: true
+            )
+
+            // Obtém ou cria o IndexManager para a coleção
+            var indexManager: IndexManager<String>
+            if let existing = indexManagers[collection] {
+                indexManager = existing
+            } else {
+                indexManager = IndexManager<String>()
+                await indexManager.createIndex(for: indexField)
+                indexManagers[collection] = indexManager
+            }
+
+            // Atualiza a entrada no índice. A estratégia aplicada aqui é inserir a nova versão;
+            // o método de insert deve estar preparado para acumular entradas quando a chave já existir.
+            await indexManager.insert(
+                index: indexField,
+                key: key,
+                data: jsonData
+            )
+        }
+    }
 
     public func bulkInsertDocuments<T: Codable>(
         _ documents: [T],
@@ -413,5 +423,23 @@ public func updateDocument<T: Codable>(
         )
         await indexManager.insert(index: indexField, key: key, data: jsonData)
 
+    }
+
+    public func bulkUpdateIndexes(
+        collection: String,
+        updates: [(indexField: String, indexKey: String, data: Data)]
+    ) async {
+        guard let indexManager = self.indexManagers[collection] else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for update in updates {
+                group.addTask {
+                    await indexManager.insert(
+                        index: update.indexField,
+                        key: update.indexKey,
+                        data: update.data
+                    )
+                }
+            }
+        }
     }
 }
