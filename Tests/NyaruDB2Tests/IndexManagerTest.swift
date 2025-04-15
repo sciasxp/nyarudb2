@@ -1,11 +1,19 @@
 import XCTest
-
 @testable import NyaruDB2
 
 final class IndexManagerTests: XCTestCase {
 
+    var manager: IndexManager<String>!
+    
+    override func setUp() async throws {
+        manager = IndexManager<String>()
+    }
+    
+    override func tearDown() async throws {
+        manager = nil
+    }
+
     func testCreateIndexAndInsertSearch() async {
-        let manager = IndexManager<String>()
         // Cria um índice para o campo "name"
         await manager.createIndex(for: "name", minimumDegree: 2)
 
@@ -24,9 +32,38 @@ final class IndexManagerTests: XCTestCase {
     }
 
     func testSearchWithoutIndex() async {
-        let manager = IndexManager<String>()
         // Se o índice para o campo "age" não foi criado, a busca deve retornar vazio
         let results = await manager.search("age", value: "30")
         XCTAssertEqual(results.count, 0)
+    }
+    
+    func testListIndexesAndDropIndex() async throws {
+        // 1. Nenhum índice no início
+        let initialIndex = await manager.listIndexes()
+        XCTAssertTrue(initialIndex.isEmpty, "Inicialmente não deve haver índices.")
+
+        // 2. Cria dois índices: "name" e "category"
+        await manager.createIndex(for: "name")
+        await manager.createIndex(for: "category")
+        
+        // 3. Verifica se listIndexes retorna os campos criados
+        let indexes = await manager.listIndexes()
+        XCTAssertEqual(Set(indexes), Set(["name", "category"]), "Deve conter 'name' e 'category' como índices.")
+
+        // 4. Remove o índice "name"
+        let removed = await manager.dropIndex(for: "name")
+        XCTAssertTrue(removed, "Remover o índice 'name' deve retornar true, pois o índice existia.")
+
+        // 5. Verifica que agora só sobra "category"
+        let updatedIndexes = await manager.listIndexes()
+        XCTAssertEqual(updatedIndexes, ["category"], "Após remover 'name', deve restar apenas 'category'.")
+
+        // 6. Remove índice inexistente
+        let removedNonExistent = await manager.dropIndex(for: "id")
+        XCTAssertFalse(removedNonExistent, "Remover um índice inexistente deve retornar false.")
+
+        // 7. Verifica que ainda existe 'category'
+        let finalIndexes = await manager.listIndexes()
+        XCTAssertEqual(finalIndexes, ["category"], "Após tentar remover índice inexistente, 'category' continua presente.")
     }
 }

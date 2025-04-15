@@ -67,4 +67,18 @@ public actor IndexManager<Key: IndexKey & Comparable> {
         }
         return counts
     }
+
+    public func listIndexes() -> [String] {
+        return Array(indices.keys)
+    }
+
+    public func dropIndex(for field: String) -> Bool {
+        guard indices[field] != nil else {
+            return false
+        }
+        indices.removeValue(forKey: field)
+        createdIndexes.remove(field)
+        metrics.removeValue(forKey: field)
+        return true
+    }
 }
