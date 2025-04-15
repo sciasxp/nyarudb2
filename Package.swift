@@ -27,6 +27,11 @@ let package = Package(
             dependencies: ["NyaruDB2"],
             path: "Sources/Benchmark"
         ),
+        .executableTarget(
+            name: "Tutorial",
+            dependencies: ["NyaruDB2"],
+            path: "Sources/Tutorial"
+        ),
         .testTarget(
             name: "NyaruDB2Tests",
             dependencies: ["NyaruDB2"],
