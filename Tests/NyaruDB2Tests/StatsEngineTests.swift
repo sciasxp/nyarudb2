@@ -21,7 +21,6 @@ final class StatsEngineTests: XCTestCase {
         // Inicializa o StorageEngine sem particionamento para simplificar
         let storage = try StorageEngine(
             path: tempDirectory.path,
-            shardKey: nil,
             compressionMethod: .none
         )
         // Insere 3 documentos em "StatsCollection"
@@ -71,7 +70,6 @@ final class StatsEngineTests: XCTestCase {
         // Inicializa o StorageEngine sem particionamento
         let storage = try StorageEngine(
             path: tempDirectory.path,
-            shardKey: nil,
             compressionMethod: .none
         )
 

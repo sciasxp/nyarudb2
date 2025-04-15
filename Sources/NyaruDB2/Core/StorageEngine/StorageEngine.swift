@@ -5,7 +5,7 @@ public actor StorageEngine {
     private let baseURL: URL
     private let compressionMethod: CompressionMethod
     private let fileProtectionType: FileProtectionType
-    private let shardKey: String?
+    public var collectionPartitionKeys: [String: String] = [:]
     public var activeShardManagers = [String: ShardManager]()
     public var indexManagers: [String: IndexManager<String>] = [:]
 
@@ -19,12 +19,10 @@ public actor StorageEngine {
 
     public init(
         path: String,
-        shardKey: String? = nil,
         compressionMethod: CompressionMethod = .none,
         fileProtectionType: FileProtectionType = .none
     ) throws {
         self.baseURL = URL(fileURLWithPath: path, isDirectory: true)
-        self.shardKey = shardKey
         self.compressionMethod = compressionMethod
         self.fileProtectionType = fileProtectionType
 
@@ -42,15 +40,17 @@ public actor StorageEngine {
         let jsonData = try JSONEncoder().encode(document)
 
         // 1. Otimização: Decodificação parcial apenas para chaves necessárias
-        let partitionValue = try shardKey.flatMap { key in
-            try DynamicDecoder.extractValue(from: jsonData, key: key)
-        }
+        let partitionField = collectionPartitionKeys[collection]
+        let partitionValue: String =
+            partitionField != nil
+            ? try DynamicDecoder.extractValue(
+                from: jsonData,
+                key: partitionField!
+            ) : "default"
 
         // 2. Gerenciamento eficiente de shards
         let shardManager = try await getOrCreateShardManager(for: collection)
-        let shard = try await shardManager.getOrCreateShard(
-            id: partitionValue ?? "default"
-        )
+        let shard = try await shardManager.getOrCreateShard(id: partitionValue)
 
         // 3. Operações de I/O assíncronas
         try await shard.appendDocument(document, jsonData: jsonData)
@@ -184,10 +184,10 @@ public actor StorageEngine {
         // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
         let shardManager = try await getOrCreateShardManager(for: collection)
         let shard: Shard
-        if let key = shardKey {
+        if let partitionField = collectionPartitionKeys[collection] {
             let partitionValue: String = try DynamicDecoder.extractValue(
                 from: jsonData,
-                key: key
+                key: partitionField
             )
             shard = try await shardManager.getOrCreateShard(id: partitionValue)
         } else {
@@ -262,10 +262,10 @@ public actor StorageEngine {
         for document in documents {
             let jsonData = try JSONEncoder().encode(document)
 
-            let partitionValue =
-                try shardKey.flatMap { key in
-                    try DynamicDecoder.extractValue(from: jsonData, key: key)
-                } ?? "default"
+            // Consulta a chave de partição configurada para a coleção.
+            let partitionField = collectionPartitionKeys[collection]
+            let partitionValue = partitionField != nil ?
+                try DynamicDecoder.extractValue(from: jsonData, key: partitionField!) : "default"
 
             groups[partitionValue, default: []].append((document, jsonData))
 
@@ -441,5 +441,9 @@ public actor StorageEngine {
                 }
             }
         }
+    }
+
+    public func setPartitionKey(for collection: String, key: String) {
+        collectionPartitionKeys[collection] = key
     }
 }

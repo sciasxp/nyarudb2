@@ -1,20 +1,19 @@
 import Foundation
 
-public struct NyaruDB2 {
+public class NyaruDB2 {
     public let storage: StorageEngine
     public let indexManager: IndexManager<String>
     private let statsEngine: StatsEngine
+    private var collections: [String: NDBCollection] = [:]
 
     // Parâmetros padrão podem ser estendidos para incluir shardKey, compressão, etc.
     public init(
         path: String = "NyaruDB2",
-        shardKey: String? = nil,
         compressionMethod: CompressionMethod = .none,
         fileProtectionType: FileProtectionType = .none
     ) throws {
         self.storage = try StorageEngine(
             path: path,
-            shardKey: shardKey,
             compressionMethod: compressionMethod,
             fileProtectionType: fileProtectionType
         )
@@ -22,8 +21,26 @@ public struct NyaruDB2 {
         self.statsEngine = StatsEngine(storage: storage)
     }
     
-    // MARK: - Operações CRUD Simples
+    /// Retrieves a previously registered collection.
+    public func getCollection(named name: String) -> NDBCollection? {
+        return collections[name]
+    }
+
+    public func createCollection(name: String, indexes: [String] = [], partitionKey: String) async throws -> NDBCollection {
+        // Set the partition key in the StorageEngine for this collection
+        await storage.setPartitionKey(for: name, key: partitionKey)
+        
+        let collection = NDBCollection(storage: storage,
+                                       statsEngine: statsEngine,
+                                       name: name,
+                                       indexes: indexes,
+                                       partitionKey: partitionKey)
+        collections[name] = collection
+        return collection
+    }
     
+    // MARK: - Operações CRUD Simples
+
     /// Insere um documento em uma coleção.
     public func insert<T: Codable>(
         _ document: T,

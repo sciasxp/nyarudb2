@@ -34,13 +34,11 @@ final class QueryEngineTests: XCTestCase {
         // Inicializa o StorageEngine sem particionamento para este teste
         storage = try StorageEngine(
             path: tempDirectory.path,
-            shardKey: nil,  // Nenhum particionamento para simplificar
             compressionMethod: .none
         )
 
         engine = try NyaruDB2(
             path: tempDirectory.path,
-            shardKey: nil,
             compressionMethod: .none
         )
 
@@ -198,7 +196,6 @@ final class QueryEngineTests: XCTestCase {
         // Inicializa o StorageEngine sem particionamento para simplificar
         let storage = try StorageEngine(
             path: tempDirectory.path,
-            shardKey: nil,
             compressionMethod: .none,
             fileProtectionType: .none
         )

@@ -28,9 +28,9 @@ let package = Package(
             path: "Sources/Benchmark"
         ),
         .executableTarget(
-            name: "Tutorial",
+            name: "QuickStart",
             dependencies: ["NyaruDB2"],
-            path: "Sources/Tutorial"
+            path: "Sources/QuickStart"
         ),
         .testTarget(
             name: "NyaruDB2Tests",
