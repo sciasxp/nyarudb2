@@ -101,7 +101,9 @@ final class QueryEngineIndexTests: XCTestCase {
         let dummyStat = IndexStat(
             totalCount: 2,
             uniqueValuesCount: 1,
-            valueDistribution: ["Alice": 2]
+            valueDistribution: ["Alice": 2],
+            accessCount: 0,
+            lastAccess: Date()
         )
         let indexStats: [String: IndexStat] = ["name": dummyStat]
         let shardStats: [ShardStat] = []  // dummy; não afeta esse teste

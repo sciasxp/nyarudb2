@@ -35,15 +35,42 @@ public struct GlobalStats: Codable {
 }
 
 public struct IndexStat {
-    public let totalCount: Int
-    public let uniqueValuesCount: Int
-    public let valueDistribution: [AnyHashable: Int]
+    public var totalCount: Int
+    public var uniqueValuesCount: Int
+    public var valueDistribution: [AnyHashable: Int]
+    public var accessCount: Int
+    public var lastAccess: Date
+
+    public var selectivity: Double {
+        guard totalCount > 0 else { return 1.0 }
+        return Double(uniqueValuesCount) / Double(totalCount)
+    }
 
     public func estimateRange(lower: AnyHashable, upper: AnyHashable) -> Int {
-        // Simplified range cost: adjust as needed.
-        return totalCount / 4
+        func toDouble(_ value: AnyHashable) -> Double? {
+            if let number = value as? NSNumber {
+                return number.doubleValue
+            }
+            if let string = value as? String, let d = Double(string) {
+                return d
+            }
+            return nil
+        }
+        
+        var cost = 0
+        for (key, frequency) in valueDistribution {
+            if let keyValue = toDouble(key),
+               let lowerValue = toDouble(lower),
+               let upperValue = toDouble(upper),
+               keyValue >= lowerValue, keyValue <= upperValue {
+                cost += frequency
+            }
+        }
+        
+        return cost > 0 ? cost : totalCount / 4
     }
 }
+
 
 public struct ShardStat {
     public let docCount: Int
@@ -185,19 +212,50 @@ public actor StatsEngine {
     }
 
     public func getIndexStats() async -> [String: IndexStat] {
-        var stats = [String: IndexStat]()
-        // This example assumes that StorageEngine manages indexManagers in a dictionary keyed by collection.
-        // Replace this dummy data with actual values from your index managers.
-        for (collection, _) in await storage.indexManagers {
-            let dummyStat = IndexStat(
-                totalCount: 100,  // e.g., total number of entries
-                uniqueValuesCount: 10,  // e.g., count of unique keys
-                valueDistribution: [:]  // e.g., frequency histogram (empty for now)
-            )
-            stats[collection] = dummyStat
+    var stats = [String: IndexStat]()
+    // Iterate over each collection and its associated IndexManager.
+    for (collection, indexManager) in await storage.indexManagers {
+        let metrics = await indexManager.getMetrics()
+        let counts = await indexManager.getIndexCounts()
+        var combinedTotalCount = 0
+        var combinedUniqueValuesCount = 0
+        var combinedDistribution = [AnyHashable: Int]()
+        var combinedAccessCount = 0
+        var latestAccess = Date.distantPast
+        
+        // Combine metrics from each index field of the collection.
+        for (field, metric) in metrics {
+            let fieldTotal = counts[field] ?? 0
+            // In a proper implementation, the B-Tree should yield the count of unique keys.
+            // Here, we assume fieldTotal as the unique count for simplicity.
+            let fieldUnique = fieldTotal
+
+            combinedTotalCount += fieldTotal
+            combinedUniqueValuesCount += fieldUnique
+            combinedAccessCount += metric.accessCount
+            if metric.lastAccess > latestAccess {
+                latestAccess = metric.lastAccess
+            }
+
+            // Aggregate the value distribution by summing the counts for each key.
+            for (key, count) in metric.valueDistribution {
+                combinedDistribution[key, default: 0] += count
+            }
         }
-        return stats
+        
+        let indexStat = IndexStat(
+            totalCount: combinedTotalCount,
+            uniqueValuesCount: combinedUniqueValuesCount,
+            valueDistribution: combinedDistribution,
+            accessCount: combinedAccessCount,
+            lastAccess: latestAccess
+        )
+        stats[collection] = indexStat
     }
+    return stats
+}
+
+
 
     public func getShardStats() async throws -> [ShardStat] {
         var shardStats = [ShardStat]()

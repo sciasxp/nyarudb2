@@ -206,4 +206,8 @@ public actor BTreeIndex<Key: Comparable & Codable> {
         let end = min(allData.count, offset + limit)
         return Array(allData[offset..<end])
     }
+
+    public func getTotalCount() async -> Int {
+        return inOrder().count
+    }
 }
