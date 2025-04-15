@@ -77,7 +77,6 @@ public class Shard {
         metadata.updatedAt = Date()
 
         let key = cacheKey(for: T.self)
-        // Atualiza o cache com os documentos recém-salvos
         documentCache.setObject(documents as NSArray, forKey: key)
     }
 

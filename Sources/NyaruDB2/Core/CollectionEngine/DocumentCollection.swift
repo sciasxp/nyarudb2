@@ -12,7 +12,7 @@ public struct CollectionMetadata: Codable {
     }
 }
 
-public class NDBCollection {
+public class DocumentCollection {
     public let metadata: CollectionMetadata
     private let storage: StorageEngine
     private let statsEngine: StatsEngine

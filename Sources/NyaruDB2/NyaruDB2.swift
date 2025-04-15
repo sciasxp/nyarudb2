@@ -4,7 +4,7 @@ public class NyaruDB2 {
     public let storage: StorageEngine
     public let indexManager: IndexManager<String>
     private let statsEngine: StatsEngine
-    private var collections: [String: NDBCollection] = [:]
+    private var collections: [String: DocumentCollection] = [:]
 
     // Parâmetros padrão podem ser estendidos para incluir shardKey, compressão, etc.
     public init(
@@ -22,15 +22,15 @@ public class NyaruDB2 {
     }
     
     /// Retrieves a previously registered collection.
-    public func getCollection(named name: String) -> NDBCollection? {
+    public func getCollection(named name: String) -> DocumentCollection? {
         return collections[name]
     }
 
-    public func createCollection(name: String, indexes: [String] = [], partitionKey: String) async throws -> NDBCollection {
+    public func createCollection(name: String, indexes: [String] = [], partitionKey: String) async throws -> DocumentCollection {
         // Set the partition key in the StorageEngine for this collection
         await storage.setPartitionKey(for: name, key: partitionKey)
         
-        let collection = NDBCollection(storage: storage,
+        let collection = DocumentCollection(storage: storage,
                                        statsEngine: statsEngine,
                                        name: name,
                                        indexes: indexes,

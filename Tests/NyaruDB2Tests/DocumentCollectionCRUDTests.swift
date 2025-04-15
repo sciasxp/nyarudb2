@@ -7,11 +7,11 @@ struct TestDocument: Codable, Equatable {
     let created_at: String
 }
 
-final class NDBCollectionCRUDTests: XCTestCase {
+final class DocumentCollectionCRUDTests: XCTestCase {
     
     var storage: StorageEngine!
     var statsEngine: StatsEngine!
-    var testCollection: NDBCollection!
+    var testCollection: DocumentCollection!
     var tempPath: String!
     
     override func setUp() async throws {
@@ -31,7 +31,7 @@ final class NDBCollectionCRUDTests: XCTestCase {
 
         
         // Instantiate the collection using the storage instance.
-        testCollection = NDBCollection(
+        testCollection = DocumentCollection(
             storage: storage,
             statsEngine: statsEngine,
             name: "TestCollection",

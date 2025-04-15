@@ -1,7 +1,7 @@
 import XCTest
 @testable import NyaruDB2
 
-final class CollectionManagerTests: XCTestCase {
+final class CollectionCatalogTests: XCTestCase {
     
     var storage: StorageEngine!
     var statsEngine: StatsEngine!
@@ -26,7 +26,7 @@ final class CollectionManagerTests: XCTestCase {
     
     /// Testa a criação de uma coleção e a sua recuperação pelo nome.
     func testCreateAndRetrieveCollection() async throws {
-        let manager = CollectionManager.shared
+        let manager = CollectionCatalog.shared
         let collection = manager.createCollection(storage: storage, statsEngine: statsEngine, name: "TestCollection", indexes: ["id"], partitionKey: "created_at")
         XCTAssertNotNil(collection, "A coleção criada não deve ser nula")
         
@@ -38,7 +38,7 @@ final class CollectionManagerTests: XCTestCase {
     
     /// Testa a listagem de coleções registradas no CollectionManager.
     func testListCollections() async throws {
-        let manager = CollectionManager.shared
+        let manager = CollectionCatalog.shared
         
         // Cria duas coleções de teste
         _ = manager.createCollection(storage: storage, statsEngine: statsEngine, name: "Collection1", indexes: ["id"], partitionKey: "created_at")

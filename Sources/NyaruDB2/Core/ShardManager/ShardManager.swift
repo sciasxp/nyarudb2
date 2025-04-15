@@ -244,6 +244,18 @@ public class ShardManager {
             }
     }
 
+    public func removeAllShards() throws {
+    // Para cada shard, remover arquivos de dados e meta.
+        for (_, shard) in shards {
+            try FileManager.default.removeItem(at: shard.url)
+            let metaURL = shard.url.appendingPathExtension("meta.json")
+            try? FileManager.default.removeItem(at: metaURL)
+        }
+        // Limpa o dicionário de shards
+        shards.removeAll()
+    }
+
+
 }
 
 extension Sequence {

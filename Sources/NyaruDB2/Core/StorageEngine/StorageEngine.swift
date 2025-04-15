@@ -414,6 +414,41 @@ public actor StorageEngine {
         return collectionURL
     }
 
+    public func repartitionCollection<T: Codable>(
+        collection: String,
+        newPartitionKey: String,
+        as type: T.Type
+    ) async throws {
+        
+        let allDocs: [T] = try await fetchDocuments(from: collection)
+        let shardManager = try await getOrCreateShardManager(for: collection)
+        try shardManager.removeAllShards()
+        setPartitionKey(for: collection, key: newPartitionKey)
+        let groups = try allDocs.reduce(into: [String: [T]]()) {
+            result,
+            document in
+            let jsonData = try JSONEncoder().encode(document)
+            let partitionValue = try DynamicDecoder.extractValue(
+                from: jsonData,
+                key: newPartitionKey
+            )
+            result[partitionValue, default: []].append(document)
+        }
+
+        for (partitionValue, docsGroup) in groups {
+            let shard = try await shardManager.getOrCreateShard(
+                id: partitionValue
+            )
+            try await shard.saveDocuments(docsGroup)
+        }
+        try await statsEngine.updateCollectionMetadata(for: collection)
+    }
+
+    public func cleanupEmptyShards(for collection: String) async throws {
+        let shardManager = try await getOrCreateShardManager(for: collection)
+        try await shardManager.cleanupEmptyShards()
+    }
+
 }
 
 extension Sequence {
