@@ -25,7 +25,6 @@ final class QueryEngineIndexTests: XCTestCase {
         // Inicializa o StorageEngine sem particionamento
         let storage = try StorageEngine(
             path: tempDir.path,
-            shardKey: nil,
             compressionMethod: .none,
             fileProtectionType: .none
         )
@@ -75,7 +74,6 @@ final class QueryEngineIndexTests: XCTestCase {
         // Inicializa o StorageEngine sem particionamento
         let storage = try StorageEngine(
             path: tempDir.path,
-            shardKey: nil,
             compressionMethod: .none,
             fileProtectionType: .none
         )

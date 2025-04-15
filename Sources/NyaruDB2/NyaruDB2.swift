@@ -8,13 +8,11 @@ public struct NyaruDB2 {
     // Parâmetros padrão podem ser estendidos para incluir shardKey, compressão, etc.
     public init(
         path: String = "NyaruDB2",
-        shardKey: String? = nil,
         compressionMethod: CompressionMethod = .none,
         fileProtectionType: FileProtectionType = .none
     ) throws {
         self.storage = try StorageEngine(
             path: path,
-            shardKey: shardKey,
             compressionMethod: compressionMethod,
             fileProtectionType: fileProtectionType
         )

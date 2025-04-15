@@ -90,14 +90,10 @@ public final class NyaruDBBenchmark {
         ).path
         print("Caminho de Benchmark: \(path)")
 
-        // Se for particionado, usamos uma shardKey – por exemplo, "category".
-        let shardKey: String? = partitioned ? "category" : nil
-
         let db: NyaruDB2
         do {
             db = try NyaruDB2(
                 path: path,
-                shardKey: shardKey,
                 compressionMethod: method,
                 fileProtectionType: .none
             )

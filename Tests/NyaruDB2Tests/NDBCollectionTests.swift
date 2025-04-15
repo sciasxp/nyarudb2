@@ -15,7 +15,7 @@ final class NDBCollectionCRUDTests: XCTestCase {
     
     override func setUp() async throws {
         tempPath = NSTemporaryDirectory().appending(UUID().uuidString)
-        db = try NyaruDB2(path: tempPath, shardKey: nil, compressionMethod: .none, fileProtectionType: .none)
+        db = try NyaruDB2(path: tempPath, compressionMethod: .none, fileProtectionType: .none)
         testCollection = NDBCollection(db: db, name: "TestCollection", indexes: ["id"], partitionKey: "created_at")
     }
     

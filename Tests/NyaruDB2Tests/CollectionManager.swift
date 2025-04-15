@@ -10,7 +10,7 @@ final class CollectionManagerTests: XCTestCase {
         // Cria um caminho temporário único para o teste
         tempPath = NSTemporaryDirectory().appending(UUID().uuidString)
         // Inicializa o NyaruDB2 sem uma chave de partição global, pois usaremos a configuração por coleção
-        db = try NyaruDB2(path: tempPath, shardKey: nil, compressionMethod: .none, fileProtectionType: .none)
+        db = try NyaruDB2(path: tempPath, compressionMethod: .none, fileProtectionType: .none)
     }
     
     override func tearDown() async throws {

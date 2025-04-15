@@ -29,7 +29,6 @@ func runTutorial() async {
         // Data will be persisted in a folder named "NyaruDB_Tutorial".
         let db = try NyaruDB2(
             path: "NyaruDB_Tutorial",
-            shardKey: nil,                // No partitioning by default
             compressionMethod: .none,     // You can use .gzip, .lzfse, etc.
             fileProtectionType: .none     // Adjust file protection as required
         )
