@@ -10,6 +10,7 @@ struct TestDocument: Codable, Equatable {
 final class NDBCollectionCRUDTests: XCTestCase {
     
     var storage: StorageEngine!
+    var statsEngine: StatsEngine!
     var testCollection: NDBCollection!
     var tempPath: String!
     
@@ -25,10 +26,14 @@ final class NDBCollectionCRUDTests: XCTestCase {
             compressionMethod: .none,
             fileProtectionType: .none
         )
+
+        statsEngine = StatsEngine(storage: storage)
+
         
         // Instantiate the collection using the storage instance.
         testCollection = NDBCollection(
             storage: storage,
+            statsEngine: statsEngine,
             name: "TestCollection",
             indexes: ["id"],
             partitionKey: "created_at"

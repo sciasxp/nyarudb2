@@ -4,6 +4,7 @@ import XCTest
 final class CollectionManagerTests: XCTestCase {
     
     var storage: StorageEngine!
+    var statsEngine: StatsEngine!
     var tempPath: String!
     
     override func setUp() async throws {
@@ -15,6 +16,7 @@ final class CollectionManagerTests: XCTestCase {
             compressionMethod: .none,
             fileProtectionType: .none
         )
+        statsEngine = StatsEngine(storage: storage)
     }
     
     override func tearDown() async throws {
@@ -25,7 +27,7 @@ final class CollectionManagerTests: XCTestCase {
     /// Testa a criação de uma coleção e a sua recuperação pelo nome.
     func testCreateAndRetrieveCollection() async throws {
         let manager = CollectionManager.shared
-        let collection = manager.createCollection(storage: storage, name: "TestCollection", indexes: ["id"], partitionKey: "created_at")
+        let collection = manager.createCollection(storage: storage, statsEngine: statsEngine, name: "TestCollection", indexes: ["id"], partitionKey: "created_at")
         XCTAssertNotNil(collection, "A coleção criada não deve ser nula")
         
         let retrieved = manager.getCollection(named: "TestCollection")
@@ -39,8 +41,8 @@ final class CollectionManagerTests: XCTestCase {
         let manager = CollectionManager.shared
         
         // Cria duas coleções de teste
-        _ = manager.createCollection(storage: storage, name: "Collection1", indexes: ["id"], partitionKey: "created_at")
-        _ = manager.createCollection(storage: storage, name: "Collection2", indexes: ["id"], partitionKey: "created_at")
+        _ = manager.createCollection(storage: storage, statsEngine: statsEngine, name: "Collection1", indexes: ["id"], partitionKey: "created_at")
+        _ = manager.createCollection(storage: storage,  statsEngine: statsEngine, name: "Collection2", indexes: ["id"], partitionKey: "created_at")
         
         let collections = manager.listCollections()
         XCTAssertGreaterThanOrEqual(collections.count, 2, "Deve haver pelo menos 2 coleções registradas")

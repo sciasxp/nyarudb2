@@ -1,6 +1,6 @@
 import Foundation
 
-public struct NyaruDB2 {
+public class NyaruDB2 {
     public let storage: StorageEngine
     public let indexManager: IndexManager<String>
     private let statsEngine: StatsEngine
@@ -26,11 +26,12 @@ public struct NyaruDB2 {
         return collections[name]
     }
 
-    public mutating func createCollection(name: String, indexes: [String] = [], partitionKey: String) async throws -> NDBCollection {
+    public func createCollection(name: String, indexes: [String] = [], partitionKey: String) async throws -> NDBCollection {
         // Set the partition key in the StorageEngine for this collection
         await storage.setPartitionKey(for: name, key: partitionKey)
         
         let collection = NDBCollection(storage: storage,
+                                       statsEngine: statsEngine,
                                        name: name,
                                        indexes: indexes,
                                        partitionKey: partitionKey)

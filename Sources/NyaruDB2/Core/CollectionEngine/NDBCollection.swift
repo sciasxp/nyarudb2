@@ -15,10 +15,12 @@ public struct CollectionMetadata: Codable {
 public class NDBCollection {
     public let metadata: CollectionMetadata
     private let storage: StorageEngine
+    private let statsEngine: StatsEngine
 
-    public init(storage: StorageEngine, name: String, indexes: [String] = [], partitionKey: String) {
+    public init(storage: StorageEngine, statsEngine: StatsEngine, name: String, indexes: [String] = [], partitionKey: String) {
         self.storage = storage
         self.metadata = CollectionMetadata(name: name, indexes: indexes, partitionKey: partitionKey)
+        self.statsEngine = statsEngine
     }
 
     public func insert<T: Codable>(_ document: T) async throws {
@@ -95,4 +97,15 @@ public class NDBCollection {
     public func delete<T: Codable>(where predicate: @escaping (T) -> Bool) async throws {
         try await storage.deleteDocuments(where: predicate, from: metadata.name)
     }
+
+    public func query<T: Codable>() async throws -> Query<T> {
+    let indexStats = await statsEngine.getIndexStats()  // Using StatsEngine directly.
+    let shardStats = try await statsEngine.getShardStats()
+    return Query<T>(collection: metadata.name,
+                    storage: storage,
+                    indexStats: indexStats,
+                    shardStats: shardStats)
+}
+
+
 }
