@@ -14,6 +14,7 @@ public actor StorageEngine {
         case partitionKeyNotFound(String)
         case indexKeyNotFound(String)
         case shardManagerCreationFailed
+        case updateDocumentNotFound
     }
 
     public init(
@@ -170,79 +171,61 @@ public actor StorageEngine {
         }
     }
 
-    public func updateDocument<T: Codable>(
-        _ document: T,
-        in collection: String,
-        matching predicate: (T) -> Bool,
-        indexField: String? = nil
-    ) async throws {
-        // 1. Codifica o documento atualizado
-        let jsonData = try JSONEncoder().encode(document)
+public func updateDocument<T: Codable>(
+    _ document: T,
+    in collection: String,
+    matching predicate: (T) -> Bool,
+    indexField: String? = nil
+) async throws {
+    // 1. Codifica o documento atualizado
+    let jsonData = try JSONEncoder().encode(document)
 
-        // 2. Determina o shard em que o documento deve residir.
-        // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
-        let shardManager = try await getOrCreateShardManager(for: collection)
-        let shard: Shard
-        if let key = shardKey {
-            // Usa nossa função extractValue para obter o valor da chave de partição.
-            let partitionValue = try DynamicDecoder.extractValue(
-                from: jsonData,
-                key: key
-            )
-            shard = try await shardManager.getOrCreateShard(id: partitionValue)
-        } else {
-            shard = try await shardManager.getOrCreateShard(id: "default")
-        }
-
-        // 3. Carrega os documentos existentes no shard
-        var documents: [T] = try await shard.loadDocuments()
-
-        // 4. Procura pelo documento correspondente, usando o predicado fornecido.
-        guard let indexToUpdate = documents.firstIndex(where: predicate) else {
-            throw NSError(
-                domain: "StorageEngine",
-                code: 3,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "Documento não encontrado para update."
-                ]
-            )
-        }
-
-        // 5. Atualiza o documento na posição encontrada
-        documents[indexToUpdate] = document
-
-        // 6. Salva o array atualizado de documentos de volta ao shard
-        try await shard.saveDocuments(documents)
-
-        // 7. Se um campo de índice for informado, atualiza a entrada no índice.
-        if let indexField = indexField {
-            // Extraí o valor do campo de índice no documento atualizado.
-            let key = try DynamicDecoder.extractValue(
-                from: jsonData,
-                key: indexField,
-                forIndex: true
-            )
-
-            // Obtém ou cria o IndexManager para a coleção
-            var indexManager: IndexManager<String>
-            if let existing = indexManagers[collection] {
-                indexManager = existing
-            } else {
-                indexManager = IndexManager<String>()
-                await indexManager.createIndex(for: indexField)
-                indexManagers[collection] = indexManager
-            }
-
-            // Atualiza a entrada no índice – a estratégia mais simples aqui é inserir a nova versão,
-            // assumindo que se o índice já possui essa chave, o método de insert adicionará o novo dado.
-            await indexManager.insert(
-                index: indexField,
-                key: key,
-                data: jsonData
-            )
-        }
+    // 2. Determina o shard onde o documento deve residir.
+    // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
+    let shardManager = try await getOrCreateShardManager(for: collection)
+    let shard: Shard
+    if let key = shardKey {
+        let partitionValue: String = try DynamicDecoder.extractValue(from: jsonData, key: key)
+        shard = try await shardManager.getOrCreateShard(id: partitionValue)
+    } else {
+        shard = try await shardManager.getOrCreateShard(id: "default")
     }
+
+    // 3. Carrega os documentos existentes no shard
+    var documents: [T] = try await shard.loadDocuments()
+
+    // 4. Procura pelo documento correspondente utilizando o predicado fornecido (ex.: por ID)
+    guard let indexToUpdate = documents.firstIndex(where: predicate) else {
+        throw StorageEngine.StorageError.updateDocumentNotFound
+    }
+
+    // 5. Atualiza o documento no array local
+    documents[indexToUpdate] = document
+
+    // 6. Salva os documentos atualizados de volta ao shard
+    try await shard.saveDocuments(documents)
+    
+    // 7. Se um campo de índice for informado, atualiza a entrada no índice
+    if let indexField = indexField {
+        // Extrai o valor do campo de índice (usando forIndex=true)
+        let key: String = try DynamicDecoder.extractValue(from: jsonData, key: indexField, forIndex: true)
+        
+        // Obtém ou cria o IndexManager para a coleção
+        var indexManager: IndexManager<String>
+        if let existing = indexManagers[collection] {
+            indexManager = existing
+        } else {
+            indexManager = IndexManager<String>()
+            await indexManager.createIndex(for: indexField)
+            indexManagers[collection] = indexManager
+        }
+        
+        // Atualiza a entrada no índice. A estratégia aplicada aqui é inserir a nova versão;
+        // o método de insert deve estar preparado para acumular entradas quando a chave já existir.
+        await indexManager.insert(index: indexField, key: key, data: jsonData)
+    }
+}
+
 
     public func bulkInsertDocuments<T: Codable>(
         _ documents: [T],

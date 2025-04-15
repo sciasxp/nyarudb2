@@ -3,11 +3,11 @@ import XCTest
 @testable import NyaruDB2
 
 // Modelo para testes
-struct StorageEngineTestModel: Codable, Equatable {
-    let id: Int
-    let name: String
-    let category: String?  // Usado para particionamento, se necessário
-}
+// struct StorageEngineTestModel: Codable, Equatable {
+//     let id: Int
+//     let name: String
+//     let category: String?  // Usado para particionamento, se necessário
+// }
 
 final class StorageEngineTests: XCTestCase {
 
@@ -348,7 +348,7 @@ final class StorageEngineTests: XCTestCase {
         try await storage.insertDocument(model2, collection: "TestCollection")
 
         // Cria um documento atualizado para model1 (por exemplo, altera o nome para "Alicia")
-        let updatedModel1 = StorageEngineTestModel(
+        let updatedModel1 = TestModel(
             id: 1,
             name: "Alicia",
             category: nil
@@ -358,7 +358,7 @@ final class StorageEngineTests: XCTestCase {
         try await storage.updateDocument(
             updatedModel1,
             in: "TestCollection",
-            matching: { (doc: StorageEngineTestModel) -> Bool in
+            matching: { (doc: TestModel) -> Bool in
                 return doc.id == 1
             }
         )

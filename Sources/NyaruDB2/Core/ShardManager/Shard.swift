@@ -22,6 +22,7 @@ public class Shard {
     public private(set) var metadata: ShardMetadata
     public let compressionMethod: CompressionMethod
     public let fileProtectionType: FileProtectionType
+    private var documentCache: NSCache<NSString, NSArray> = NSCache()
 
     public init(
         id: String,
@@ -43,12 +44,23 @@ public class Shard {
     }
 
     public func loadDocuments<T: Codable>() async throws -> [T] {
+        let key = cacheKey(for: T.self)
+        // Tenta obter os documentos do cache
+        if let cached = documentCache.object(forKey: key) as? [T] {
+            return cached
+        }
+
+        // Se o arquivo não existir, retorna array vazio
         guard FileManager.default.fileExists(atPath: url.path) else {
             return []
         }
+
         let compressedData = try Data(contentsOf: url)
         let data = try decompressData(compressedData, method: compressionMethod)
-        return try JSONDecoder().decode([T].self, from: data)
+        let docs = try JSONDecoder().decode([T].self, from: data)
+        // Armazena os documentos no cache
+        documentCache.setObject(docs as NSArray, forKey: key)
+        return docs
     }
 
     public func saveDocuments<T: Codable>(_ documents: [T]) async throws {
@@ -63,7 +75,12 @@ public class Shard {
 
         metadata.documentCount = documents.count
         metadata.updatedAt = Date()
+
+        let key = cacheKey(for: T.self)
+        // Atualiza o cache com os documentos recém-salvos
+        documentCache.setObject(documents as NSArray, forKey: key)
     }
+
     public func appendDocument<T: Codable>(_ document: T, jsonData: Data)
         async throws
     {
@@ -88,4 +105,9 @@ public class Shard {
             }
         }
     }
+
+    private func cacheKey<T: Codable>(for type: T.Type) -> NSString {
+        return "\(String(describing: type))_docs" as NSString
+    }
+
 }
