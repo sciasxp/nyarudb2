@@ -54,8 +54,6 @@ public class ShardManager {
 
         try await shard.saveDocuments([] as [String])
 
-        try saveMetadata(for: shard)
-
         return shard
     }
 
@@ -84,18 +82,31 @@ public class ShardManager {
     }
 
     public func loadShards() {
-        shards.removeAll()
-        guard
-            let files = try? FileManager.default.contentsOfDirectory(
-                at: baseURL,
-                includingPropertiesForKeys: nil
-            )
-        else { return }
-        for url in files where url.pathExtension == "shard" {
-            let id = url.deletingPathExtension().lastPathComponent
-            let metadata = (try? loadMetadata(from: url)) ?? ShardMetadata()
-            shards[id] = Shard(id: id, url: url, metadata: metadata)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: baseURL,
+            includingPropertiesForKeys: nil
+        ) else {
+            print("[ShardManager] Failed to read directory contents at \(baseURL)")
+            return
         }
+        
+        let loadedShards = files
+            .filter { $0.pathExtension == "shard" }
+            .compactMap { url -> (String, Shard)? in
+                let id = url.deletingPathExtension().lastPathComponent
+                do {
+                    let metadata = try loadMetadata(from: url)
+                    print("[ShardManager] Successfully loaded shard \(id)")
+                    return (id, Shard(id: id, url: url, metadata: metadata))
+                } catch {
+                    print("[ShardManager] Error loading metadata for shard \(id): \(error.localizedDescription)")
+                    print("[ShardManager] Creating shard \(id) with default metadata")
+                    return (id, Shard(id: id, url: url, metadata: ShardMetadata()))
+                }
+            }
+        
+        shards = Dictionary(uniqueKeysWithValues: loadedShards)
+        print("[ShardManager] Loaded \(shards.count) shards")
     }
 
     private func startAutoMergeProcess() {
@@ -203,19 +214,6 @@ public class ShardManager {
         )
     }
 
-    private func metadataURL(for shard: Shard) -> URL {
-        shard.url.appendingPathExtension("meta.json")
-    }
-
-    private func saveMetadata(for shard: Shard) throws {
-        let data = try JSONEncoder().encode(shard.metadata)
-        do {
-            try data.write(to: metadataURL(for: shard), options: .atomic)
-        } catch {
-            throw ShardManagerError.failedToSaveShard(shardID: shard.id)
-        }
-    }
-
     private func loadMetadata(from shardURL: URL) throws -> ShardMetadata {
         let metaURL = shardURL.appendingPathExtension("meta.json")
         let data = try Data(contentsOf: metaURL)
@@ -226,15 +224,15 @@ public class ShardManager {
         return Array(shards.values)
     }
 
-
-    
-
-
+    public func cleanupEmptyShards() async throws {
+        try shards
+            .filter { $0.value.metadata.documentCount == 0 }
+            .forEach { key, shard in
+                try FileManager.default.removeItem(at: shard.url)
+                try? FileManager.default.removeItem(at: shard.url.appendingPathExtension("meta.json"))
+                shards.removeValue(forKey: key)
+            }
+    }
 
 }
 
-public struct ShardMetadataInfo: Codable {
-    public let id: String
-    public let url: URL
-    public let metadata: ShardMetadata
-}

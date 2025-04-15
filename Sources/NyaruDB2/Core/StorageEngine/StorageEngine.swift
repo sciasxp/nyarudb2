@@ -8,6 +8,7 @@ public actor StorageEngine {
     public var collectionPartitionKeys: [String: String] = [:]
     public var activeShardManagers = [String: ShardManager]()
     public var indexManagers: [String: IndexManager<String>] = [:]
+    private lazy var statsEngine: StatsEngine = StatsEngine(storage: self)
 
     public enum StorageError: Error {
         case invalidDocument
@@ -21,6 +22,7 @@ public actor StorageEngine {
         path: String,
         compressionMethod: CompressionMethod = .none,
         fileProtectionType: FileProtectionType = .none
+        
     ) throws {
         self.baseURL = URL(fileURLWithPath: path, isDirectory: true)
         self.compressionMethod = compressionMethod
@@ -73,6 +75,9 @@ public actor StorageEngine {
             )
             indexManagers[collection] = indexManager
         }
+
+        try await self.statsEngine.updateCollectionMetadata(for: collection)
+    
     }
 
     public func fetchDocuments<T: Codable>(from collection: String) async throws
@@ -169,6 +174,7 @@ public actor StorageEngine {
                 try await shard.saveDocuments(newDocuments)
             }
         }
+        try await self.statsEngine.updateCollectionMetadata(for: collection)
     }
 
     public func updateDocument<T: Codable>(
@@ -308,6 +314,8 @@ public actor StorageEngine {
             // Salva o conjunto atualizado de documentos no shard
             try await shard.saveDocuments(existingDocs)
         }
+
+        try await self.statsEngine.updateCollectionMetadata(for: collection)
     }
 
     public func countDocuments(in collection: String) async throws -> Int {
@@ -446,4 +454,10 @@ public actor StorageEngine {
     public func setPartitionKey(for collection: String, key: String) {
         collectionPartitionKeys[collection] = key
     }
+
+    public func collectionDirectory(for collection: String) async throws -> URL {
+        let collectionURL = baseURL.appendingPathComponent(collection, isDirectory: true)
+        return collectionURL
+    }
+
 }
