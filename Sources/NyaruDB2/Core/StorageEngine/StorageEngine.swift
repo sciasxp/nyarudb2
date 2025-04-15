@@ -57,23 +57,10 @@ public actor StorageEngine {
         // 3. Operações de I/O assíncronas
         try await shard.appendDocument(document, jsonData: jsonData)
 
-        if let indexField = indexField {
-            let key = try DynamicDecoder.extractValue(
-                from: jsonData,
-                key: indexField,
-                forIndex: true
-            )
-            let indexManager =
-                indexManagers[collection] ?? IndexManager<String>()
-            // Remove a criação do índice se ele já existe;
-            // a criação deve acontecer uma única vez (por exemplo, na configuração inicial do datasource)
-            await indexManager.createIndex(for: indexField)  // NÃO chamar se o índice já foi criado
-            await indexManager.insert(
-                index: indexField,
-                key: key,
-                data: jsonData
-            )
-            indexManagers[collection] = indexManager
+        let indexManager = indexManagers[collection] ?? IndexManager<String>()
+        indexManagers[collection] = indexManager  // salva no dicionário caso seja recém-criado
+        if let unwrappedIndexField = indexField {
+            try await indexManager.upsertIndex(for: unwrappedIndexField, jsonData: jsonData)
         }
 
         try await self.statsEngine.updateCollectionMetadata(for: collection)
@@ -148,11 +135,9 @@ public actor StorageEngine {
         matching predicate: (T) -> Bool,
         indexField: String? = nil
     ) async throws {
-        // 1. Codifica o documento atualizado
+
         let jsonData = try JSONEncoder().encode(document)
 
-        // 2. Determina o shard onde o documento deve residir.
-        // Se houver uma shardKey, extrai seu valor; caso contrário, usa "default".
         let shardManager = try await getOrCreateShardManager(for: collection)
         let shard: Shard
         if let partitionField = collectionPartitionKeys[collection] {
@@ -165,46 +150,20 @@ public actor StorageEngine {
             shard = try await shardManager.getOrCreateShard(id: "default")
         }
 
-        // 3. Carrega os documentos existentes no shard
         var documents: [T] = try await shard.loadDocuments()
 
-        // 4. Procura pelo documento correspondente utilizando o predicado fornecido (ex.: por ID)
         guard let indexToUpdate = documents.firstIndex(where: predicate) else {
             throw StorageEngine.StorageError.updateDocumentNotFound
         }
 
-        // 5. Atualiza o documento no array local
         documents[indexToUpdate] = document
 
-        // 6. Salva os documentos atualizados de volta ao shard
         try await shard.saveDocuments(documents)
-
-        // 7. Se um campo de índice for informado, atualiza a entrada no índice
-        if let indexField = indexField {
-            // Extrai o valor do campo de índice (usando forIndex=true)
-            let key: String = try DynamicDecoder.extractValue(
-                from: jsonData,
-                key: indexField,
-                forIndex: true
-            )
-
-            // Obtém ou cria o IndexManager para a coleção
-            var indexManager: IndexManager<String>
-            if let existing = indexManagers[collection] {
-                indexManager = existing
-            } else {
-                indexManager = IndexManager<String>()
-                await indexManager.createIndex(for: indexField)
-                indexManagers[collection] = indexManager
-            }
-
-            // Atualiza a entrada no índice. A estratégia aplicada aqui é inserir a nova versão;
-            // o método de insert deve estar preparado para acumular entradas quando a chave já existir.
-            await indexManager.insert(
-                index: indexField,
-                key: key,
-                data: jsonData
-            )
+        
+        let indexManager = indexManagers[collection] ?? IndexManager<String>()
+        indexManagers[collection] = indexManager  // salva no dicionário caso seja recém-criado
+        if let unwrappedIndexField = indexField {
+            try await indexManager.upsertIndex(for: unwrappedIndexField, jsonData: jsonData)
         }
     }
 
@@ -316,7 +275,6 @@ public actor StorageEngine {
         return collections.map { $0.lastPathComponent }
     }
 
-    // TODO: move to ShardManager
     public func getShardManagers(for collection: String) async throws -> [Shard]
     {
         guard let shardManager = activeShardManagers[collection] else {
@@ -325,7 +283,6 @@ public actor StorageEngine {
         return shardManager.allShards()
     }
 
-    // TODO: move to ShardManager
     public func getShard(forPartition partition: String, in collection: String)
         async throws -> Shard?
     {
@@ -333,7 +290,6 @@ public actor StorageEngine {
         return shards.first(where: { $0.id == partition })
     }
 
-    // TODO: move to ShardManager
     private func getOrCreateShardManager(for collection: String) async throws
         -> ShardManager
     {
@@ -358,30 +314,6 @@ public actor StorageEngine {
         return newManager
     }
 
-    // TODO: move to IndexManager
-    private func updateIndex(
-        collection: String,
-        indexField: String,
-        jsonData: Data
-    ) async throws {
-        let indexManager: IndexManager<String>
-        if let existing = indexManagers[collection] {
-            indexManager = existing
-        } else {
-            let newManager = IndexManager<String>()
-            await newManager.createIndex(for: indexField)
-            indexManagers[collection] = newManager
-            indexManager = newManager
-        }
-
-        let key = try DynamicDecoder.extractValue(
-            from: jsonData,
-            key: indexField,
-            forIndex: true
-        )
-        await indexManager.insert(index: indexField, key: key, data: jsonData)
-
-    }
 
     public func bulkUpdateIndexes(
         collection: String,
@@ -472,8 +404,6 @@ extension Sequence {
 }
 
 extension Dictionary {
-    /// Executa de forma assíncrona a função passada para cada par chave/valor,
-    /// aguardando a conclusão de cada iteração sequencialmente.
     func forEachAsync(_ body: (Key, Value) async throws -> Void) async rethrows
     {
         for (key, value) in self {

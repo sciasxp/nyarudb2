@@ -81,4 +81,22 @@ public actor IndexManager<Key: IndexKey & Comparable> {
         metrics.removeValue(forKey: field)
         return true
     }
+
+    public func upsertIndex(for field: String, jsonData: Data) async throws {
+        await createIndex(for: field)
+
+        let keyString = try DynamicDecoder.extractValue(
+            from: jsonData,
+            key: field,
+            forIndex: true
+        )
+
+        guard let key = keyString as? Key else {
+            print("Não foi possível converter a chave para o tipo Key.")
+            return
+        }
+
+        await insert(index: field, key: key, data: jsonData)
+    }
+
 }
