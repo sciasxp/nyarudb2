@@ -1,8 +1,8 @@
-import Foundation
 import Compression
+import Foundation
 import zlib
 
-public enum CompressionMethod {
+public enum CompressionMethod: String, CaseIterable, Codable {
     case none
     case gzip
     case lzfse
@@ -18,7 +18,8 @@ public enum CompressionError: Error {
 
 // MARK: - Funções Públicas
 
-public func compressData(_ data: Data, method: CompressionMethod) throws -> Data {
+public func compressData(_ data: Data, method: CompressionMethod) throws -> Data
+{
     guard !data.isEmpty else { return data }
     switch method {
     case .none:
@@ -32,7 +33,9 @@ public func compressData(_ data: Data, method: CompressionMethod) throws -> Data
     }
 }
 
-public func decompressData(_ data: Data, method: CompressionMethod) throws -> Data {
+public func decompressData(_ data: Data, method: CompressionMethod) throws
+    -> Data
+{
     guard !data.isEmpty else { return data }
     switch method {
     case .none:
@@ -48,40 +51,54 @@ public func decompressData(_ data: Data, method: CompressionMethod) throws -> Da
 
 // MARK: - Helpers com Compression Framework (LZFSE, LZ4)
 
-private func compress(data: Data, algorithm: compression_algorithm) throws -> Data {
+private func compress(data: Data, algorithm: compression_algorithm) throws
+    -> Data
+{
     // Aloca um buffer de destino com tamanho estimado
     let dstBufferSize = data.count + (data.count / 10) + 100
-    let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: dstBufferSize)
+    let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(
+        capacity: dstBufferSize
+    )
     defer { destinationBuffer.deallocate() }
-    
-    
+
     var stream = compression_stream(
         dst_ptr: destinationBuffer,
         dst_size: dstBufferSize,
-        src_ptr: (data as NSData).bytes.bindMemory(to: UInt8.self, capacity: data.count),
+        src_ptr: (data as NSData).bytes.bindMemory(
+            to: UInt8.self,
+            capacity: data.count
+        ),
         src_size: data.count,
         state: nil
     )
 
     // Inicializa o stream para codificação (compressão)
-    let statusInit = compression_stream_init(&stream, COMPRESSION_STREAM_ENCODE, algorithm)
+    let statusInit = compression_stream_init(
+        &stream,
+        COMPRESSION_STREAM_ENCODE,
+        algorithm
+    )
     guard statusInit == COMPRESSION_STATUS_OK else {
         throw CompressionError.compressionFailed
     }
     defer { compression_stream_destroy(&stream) }
-    
+
     var outputData = Data()
     // Usa withUnsafeBytes para acessar os dados de forma segura
     try data.withUnsafeBytes { (srcPointer: UnsafeRawBufferPointer) in
-        guard let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+        guard
+            let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(
+                to: UInt8.self
+            )
+        else {
             throw CompressionError.compressionFailed
         }
-        
+
         stream.src_ptr = baseAddress
         stream.src_size = data.count
         stream.dst_ptr = destinationBuffer
         stream.dst_size = dstBufferSize
-        
+
         while true {
             let flag = Int32(COMPRESSION_STREAM_FINALIZE.rawValue)
             let status = compression_stream_process(&stream, flag)
@@ -106,38 +123,52 @@ private func compress(data: Data, algorithm: compression_algorithm) throws -> Da
     return outputData
 }
 
-private func decompress(data: Data, algorithm: compression_algorithm) throws -> Data {
+private func decompress(data: Data, algorithm: compression_algorithm) throws
+    -> Data
+{
     // Estimativa do tamanho do buffer de destino (em geral, o resultado descompactado pode ser maior)
     let dstBufferSize = data.count * 4
-    let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: dstBufferSize)
+    let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(
+        capacity: dstBufferSize
+    )
     defer { destinationBuffer.deallocate() }
-    
 
     var stream = compression_stream(
         dst_ptr: destinationBuffer,
         dst_size: dstBufferSize,
-        src_ptr: (data as NSData).bytes.bindMemory(to: UInt8.self, capacity: data.count),
+        src_ptr: (data as NSData).bytes.bindMemory(
+            to: UInt8.self,
+            capacity: data.count
+        ),
         src_size: data.count,
         state: nil
     )
 
-    let statusInit = compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, algorithm)
+    let statusInit = compression_stream_init(
+        &stream,
+        COMPRESSION_STREAM_DECODE,
+        algorithm
+    )
     guard statusInit == COMPRESSION_STATUS_OK else {
         throw CompressionError.decompressionFailed
     }
     defer { compression_stream_destroy(&stream) }
-    
+
     var outputData = Data()
     try data.withUnsafeBytes { (srcPointer: UnsafeRawBufferPointer) in
-        guard let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+        guard
+            let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(
+                to: UInt8.self
+            )
+        else {
             throw CompressionError.decompressionFailed
         }
-        
+
         stream.src_ptr = baseAddress
         stream.src_size = data.count
         stream.dst_ptr = destinationBuffer
         stream.dst_size = dstBufferSize
-        
+
         while true {
             let status = compression_stream_process(&stream, 0)
             switch status {
@@ -167,8 +198,8 @@ private func gzipCompress(data: Data) throws -> Data {
         &stream,
         Z_DEFAULT_COMPRESSION,
         Z_DEFLATED,
-        15 + 16,    // 15 bits + 16 para o header GZIP
-        8,          // nível de memória
+        15 + 16,  // 15 bits + 16 para o header GZIP
+        8,  // nível de memória
         Z_DEFAULT_STRATEGY,
         ZLIB_VERSION,
         Int32(MemoryLayout<z_stream>.size)
@@ -177,22 +208,31 @@ private func gzipCompress(data: Data) throws -> Data {
         throw CompressionError.zlibError(code: Int(status))
     }
     defer { deflateEnd(&stream) }
-    
+
     var outputData = Data()
     // Define um buffer para os chunks
     let chunkSize = 4096
     var chunk = [UInt8](repeating: 0, count: chunkSize)
-    
+
     try data.withUnsafeBytes { (srcPointer: UnsafeRawBufferPointer) in
-        guard let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+        guard
+            let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(
+                to: UInt8.self
+            )
+        else {
             throw CompressionError.compressionFailed
         }
         stream.next_in = UnsafeMutablePointer(mutating: baseAddress)
         stream.avail_in = UInt32(data.count)
-        
+
         repeat {
-            let bytesCompressed = try chunk.withUnsafeMutableBytes { buffer -> Int in
-                guard let outPtr = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+            let bytesCompressed = try chunk.withUnsafeMutableBytes {
+                buffer -> Int in
+                guard
+                    let outPtr = buffer.baseAddress?.assumingMemoryBound(
+                        to: UInt8.self
+                    )
+                else {
                     throw CompressionError.compressionFailed
                 }
                 stream.next_out = outPtr
@@ -206,7 +246,7 @@ private func gzipCompress(data: Data) throws -> Data {
             outputData.append(chunk, count: bytesCompressed)
         } while stream.avail_out == 0
     }
-    
+
     guard status == Z_STREAM_END else {
         throw CompressionError.compressionFailed
     }
@@ -217,7 +257,7 @@ private func gzipDecompress(data: Data) throws -> Data {
     var stream = z_stream()
     var status: Int32 = inflateInit2_(
         &stream,
-        15 + 32,    // 15 bits + 32 para detecção automática de header GZIP
+        15 + 32,  // 15 bits + 32 para detecção automática de header GZIP
         ZLIB_VERSION,
         Int32(MemoryLayout<z_stream>.size)
     )
@@ -225,21 +265,28 @@ private func gzipDecompress(data: Data) throws -> Data {
         throw CompressionError.zlibError(code: Int(status))
     }
     defer { inflateEnd(&stream) }
-    
+
     var outputData = Data()
     let chunkSize = 4096
     var chunk = [UInt8](repeating: 0, count: chunkSize)
-    
+
     try data.withUnsafeBytes { (srcPointer: UnsafeRawBufferPointer) in
-        guard let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+        guard
+            let baseAddress = srcPointer.baseAddress?.assumingMemoryBound(
+                to: UInt8.self
+            )
+        else {
             throw CompressionError.decompressionFailed
         }
         stream.next_in = UnsafeMutablePointer(mutating: baseAddress)
         stream.avail_in = UInt32(data.count)
-        
+
         repeat {
-            let bytesDecompressed = chunk.withUnsafeMutableBytes { buffer -> Int in
-                stream.next_out = buffer.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            let bytesDecompressed = chunk.withUnsafeMutableBytes {
+                buffer -> Int in
+                stream.next_out = buffer.baseAddress?.assumingMemoryBound(
+                    to: UInt8.self
+                )
                 stream.avail_out = UInt32(chunkSize)
                 status = inflate(&stream, Z_SYNC_FLUSH)
                 return chunkSize - Int(stream.avail_out)
@@ -248,11 +295,14 @@ private func gzipDecompress(data: Data) throws -> Data {
                 throw CompressionError.zlibError(code: Int(status))
             }
             chunk.withUnsafeMutableBytes { buffer in
-                outputData.append(buffer.bindMemory(to: UInt8.self).baseAddress!, count: bytesDecompressed)
+                outputData.append(
+                    buffer.bindMemory(to: UInt8.self).baseAddress!,
+                    count: bytesDecompressed
+                )
             }
         } while stream.avail_out == 0 && status != Z_STREAM_END
     }
-    
+
     guard status == Z_STREAM_END else {
         throw CompressionError.decompressionFailed
     }

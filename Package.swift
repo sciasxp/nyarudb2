@@ -22,6 +22,16 @@ let package = Package(
                 .linkedFramework("Compression", .when(platforms: [.iOS]))
             ]
         ),
+        .executableTarget(
+            name: "Benchmark",
+            dependencies: ["NyaruDB2"],
+            path: "Sources/Benchmark"
+        ),
+        .executableTarget(
+            name: "QuickStart",
+            dependencies: ["NyaruDB2"],
+            path: "Sources/QuickStart"
+        ),
         .testTarget(
             name: "NyaruDB2Tests",
             dependencies: ["NyaruDB2"],
