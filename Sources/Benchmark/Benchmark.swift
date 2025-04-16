@@ -404,10 +404,10 @@ public final class NyaruDBBenchmark {
         let columns = [
             "Method".padding(toLength: 13, withPad: " ", startingAt: 0),
             "Partition".padding(toLength: 9, withPad: " ", startingAt: 0),
-            "Insert (s)".padding(toLength: 13, withPad: " ", startingAt: 0),
-            "Query (s)".padding(toLength: 13, withPad: " ", startingAt: 0),
-            "Update (s)".padding(toLength: 10, withPad: " ", startingAt: 0),
-            "Delete (s)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Insert (ms)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Query (ms)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Update (ms)".padding(toLength: 10, withPad: " ", startingAt: 0),
+            "Delete (ms)".padding(toLength: 13, withPad: " ", startingAt: 0),
             "Size (MB)".padding(toLength: 13, withPad: " ", startingAt: 0),
             "Memory (MB)".padding(toLength: 13, withPad: " ", startingAt: 0),
         ]
@@ -427,10 +427,10 @@ public final class NyaruDBBenchmark {
             let formattedRow = [
                 result.method.rawValue.padding(toLength: 13, withPad: " ", startingAt: 0),
                 result.partitioned ? "true" : "false",
-                String(format: "%-13.2f", result.insertTime),
-                String(format: "%-13.2f", result.queryTime),
-                String(format: "%-10.2f", result.updateTime),
-                String(format: "%-13.2f", result.deleteTime),
+                String(format: "%-13.4f", (result.insertTime * 1000)),
+                String(format: "%-13.4f", result.queryTime * 1000),
+                String(format: "%-10.4f", result.updateTime * 1000),
+                String(format: "%-13.4f", result.deleteTime * 1000),
                 String(format: "%-13.2f", Double(result.fileSize) / 1_000_000),
                 String(format: "%-13d", result.memoryUsage),
             ]

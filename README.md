@@ -1,156 +1,136 @@
 # NyaruDB2
 
-**NyaruDB2** is a lightweight, high-performance database system built for mobile devices. It is designed to manage massive datasets (up to 1GB per shard) efficiently with features such as compression, partitioning (via shards), custom indexing, lazy query execution, detailed statistics, and benchmarking.
+**NyaruDB2** is a lightweight, high-performance embedded database for iOS apps, designed to handle large datasets efficiently with modern Swift concurrency features. It supports advanced data management capabilities including compression, sharding, indexing.
 
-## Features
+## Key Features
 
-- **Sharded Storage**
-  - Supports partitioning of data using a configurable shard key (e.g., `"category"`). Data is split across multiple shards to optimize I/O performance when handling large files.
+### Performance Optimizations
+- **Sharded Storage Architecture**  
+  Automatic partitioning using configurable shard keys (e.g., `"category"`) with parallel I/O operations
+- **Multi-Algorithm Compression**  
+  Supports GZIP, LZFSE, and LZ4 compression via Apple's Compression framework
+- **B-Tree Indexing**  
+  Concurrent-safe indexing system with configurable minimum degree
 
-- **Optimized Compression**
-  - Supports various compression methods:
-    - **none**: No compression.
-    - **gzip**: Compression using libz.
-    - **lzfse** and **lz4**: Compression using Apple’s [Compression](https://developer.apple.com/documentation/compression) framework for high performance.
-    
-- **Index Management**
-  - Provides an `IndexManager` based on a B-Tree (implemented as an actor for concurrency safety) that supports custom index keys for fast lookups.
+### Advanced Query Capabilities
+- **Type-Safe Query Builder**  
+  Supports 15+ predicate types including ranges, substring matching, and existence checks
+- **Lazy Loading**  
+  `AsyncThrowingStream` implementation for memory-efficient large dataset handling
+- **Query Optimization**  
+  Cost-based query planner with index selection and shard pruning
 
-- **Query Engine**
-  - Allows building flexible queries using multiple predicate types (equality, inequality, numeric comparisons, ranges, substring matching, and more). It supports lazy loading of documents using `AsyncThrowingStream` for efficient memory usage.
+## Architecture Overview
 
-- **Statistics**
-  - A `StatsEngine` compiles detailed per-collection and global statistics (number of shards, total documents, overall file size, and memory usage).
-
-- **Benchmarking**
-  - A benchmarking module is included to measure the performance of insertion, querying, updating, and deletion operations under different configurations (both partitioned and non-partitioned). It measures execution time, file sizes, and memory consumption, and outputs both a terminal report and detailed JSON files.
-
-## Project Structure
-
-```
+```bash
 NyaruDB2/
-├── Package.swift
 ├── Sources/
-│   ├── Benchmark/                # Benchmark executable
-│   └── NyaruDB2/                 # Main framework source code
-│       ├── Core/
-│       │   ├── Commons/          # DynamicDecoder, FileProtection, etc.
-│       │   ├── IndexManager/     # IndexManager and BTreeIndex implementations
-│       │   ├── QueryEngine/      # QueryEngine for building and executing queries
-│       │   ├── StatsEngine/      # Statistics collection
-│       │   └── StorageEngine/    # StorageEngine, ShardManager, and Shard implementations
-│       └── NyaruDB2.swift         # Public interface for the database
-└── Tests/                        # Unit tests for each module
+│   ├── NyaruDB2/
+│   │   ├── Core/
+│   │   │   ├── Commons/          # FileProtection, DynamicDecoder
+│   │   │   ├── IndexManager/     # B-Tree implementation (BTreeIndex.swift)
+│   │   │   ├── QueryEngine/      # Query, QueryPlanner, ExecutionPlan
+│   │   │   ├── StatsEngine/      # CollectionStats, GlobalStats
+│   │   │   └── StorageEngine/    # ShardManager, Shard, Compression
+│   │   ├── CollectionEngine/     # DocumentCollection, CollectionCatalog
+│   │   └── NyaruDB2.swift        # Main public API
+│   └── Benchmark/                # Performance test suite
+└── Tests/
 ```
 
-## Requirements
+## Getting Started
 
-- Swift 5.9 or later
-- Platforms: iOS 15+, macOS 12+ (others may work)
+### Requirements
+- Swift 5.9+
+- iOS 15+ / macOS 12+
+- Xcode 15+
 
-## Installation
-
-Clone the repository and build the project using Swift Package Manager:
-
-```bash
-git clone https://github.com/your-username/NyaruDB2.git
-cd NyaruDB2
-swift build
+### Installation
+Add to your `Package.swift`:
+```swift
+dependencies: [
+    .package(url: "https://github.com/galileostudio/NyaruDB2.git", from: "1.0.0")
+]
 ```
 
-## Running Tests
-
-Execute all unit tests via:
-
-```bash
-swift test
-```
-
-## Usage
-
-Integrate **NyaruDB2** into your project using Swift Package Manager. Here's a quick example of how to create and use the database:
+## Usage Example
 
 ```swift
 import NyaruDB2
 
-struct Person: Codable {
+struct User: Codable {
     let id: Int
     let name: String
-    let category: String?
-}
-
-do {
-    // Initialize NyaruDB2 with gzip compression and partition by "category"
-    let db = try NyaruDB2(
-        path: "/path/to/database",
-        shardKey: "category",
-        compressionMethod: .gzip,
-        fileProtectionType: .none
-    )
-    
-    // Create a sample document
-    let person = Person(id: 1, name: "Alice", category: "A")
-    
-    // Insert the document into the "People" collection with an index on "name"
-    try await db.insert(person, into: "People", indexField: "name")
-    
-    // Fetch all documents from the collection
-    let people: [Person] = try await db.fetch(from: "People")
-    print(people)
-    
-    // Update the document
-    let updatedPerson = Person(id: 1, name: "Alice Updated", category: "A")
-    try await db.update(updatedPerson, in: "People", matching: { $0.id == 1 }, indexField: "name")
-    
-    // Delete the document
-    try await db.delete(where: { (p: Person) in p.name == "Alice Updated" }, from: "People")
-    
-    // Retrieve global statistics
-    let stats = try await db.getGlobalStats()
-    print("Total Collections: \(stats.totalCollections)")
-    
-} catch {
-    print("Error: \(error)")
+    let createdAt: String
 }
 ```
 
-## Benchmarking
-
-The **Benchmark** module (located in `Sources/Benchmark/Benchmark.swift`) allows you to run performance tests on NyaruDB2 under different configurations, measuring the performance of insert, query, update, and delete operations. It also reports file sizes and memory usage.
-
-### Running the Benchmark
-
-To run the benchmark from the command line:
-
-```bash
-swift run Benchmark
+- Initialize database
+```swift
+let db = try NyaruDB2(
+    path: "NyaruDB_Demo",
+    compressionMethod: .lzfse,
+    fileProtectionType: .completeUntilFirstUserAuthentication
+)
 ```
 
-Benchmark results are printed to the terminal, and a detailed JSON report is saved in the user's document directory.
-
-### Sample Benchmark Output
-
+- Create collection with partition key
+```swift
+let users = try await db.createCollection(
+    name: "Users",
+    indexes: ["id"],
+    partitionKey: "createdAt"
+)
 ```
-| Method        | Partition | Insert (s)   | Query (s)    | Update (s)   | Delete (s)   | File Size (MB) | Memory (MB) |
-|---------------|-----------|--------------|--------------|--------------|--------------|----------------|-------------|
-| none          | false     | 0.67         | 0.22         | 0.17         | 0.06         | 21.97          | 312         |
-| none          | true      | 0.99         | 0.00         | 0.00         | 0.05         | 21.61          | 308         |
-| gzip          | false     | 0.95         | 0.22         | 0.20         | 0.06         | 0.12           | 259         |
-| gzip          | true      | 1.33         | 0.00         | 0.00         | 0.08         | 0.13           | 269         |
-| lzfse         | false     | 0.93         | 0.22         | 0.20         | 0.06         | 0.09           | 254         |
-| lzfse         | true      | 1.23         | 0.00         | 0.00         | 0.07         | 0.10           | 335         |
-| lz4           | false     | 0.62         | 0.22         | 0.15         | 0.05         | 0.26           | 385         |
-| lz4           | true      | 0.97         | 0.00         | 0.00         | 0.10         | 0.27           | 409         |
+- Insert documents
+```swift
+try await users.bulkInsert([
+    User(id: 1, name: "Alice", createdAt: "2024-01"),
+    User(id: 2, name: "Bob", createdAt: "2024-02")
+])
 ```
+
+- Query with predicates
+```swift
+let query = try await users.query()
+query.where(\User.id, .greaterThan(1))
+let results = try await query.execute()
+```
+
+## Documentation
+
+Explore full API reference at:  
+[https://nyarudb2.docs.example.com](https://nyarudb2.docs.example.com)
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request with your improvements. Ensure your changes are accompanied by appropriate unit tests.
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/improvement`)
+3. Commit changes (`git commit -am 'Add new feature'`)
+4. Push to branch (`git push origin feature/improvement`)
+5. Open Pull Request
 
 ## License
 
-This project is licensed under the [Apache License](LICENSE).
+Apache 2.0 - See [LICENSE](LICENSE) file
 
-## Contact
+---
 
-For questions or suggestions, please contact: [demetrius.albuquerque@yahoo.com.br](mailto:demetrius.albuquerque@yahoo.com.br)
+**Contact**: [demetrius.albuquerque@yahoo.com.br](mailto:demetrius.albuquerque@yahoo.com.br)  
+
+
+--- 
+## Acknowledgements
+
+NyaruDB2 was inspired by the original [NyaruDB](https://github.com/kelp404/NyaruDB) project created by [kelp404](https://github.com/kelp404). While NyaruDB2 has been completely rewritten with significant architectural changes (including sharding, compression, and modern Swift concurrency), we appreciate the foundational ideas from the initial implementation.
+
+### Original Project Comparison
+| Feature               | NyaruDB                           | NyaruDB2                          |
+|-----------------------|-----------------------------------|-----------------------------------|
+| **Architecture**      | Single-file storage               | Sharded design                    |
+| **Concurrency**       | GCD-based async/sync              | Swift async/await (Actors)        |
+| **Compression**       | None                              | GZIP, LZFSE, LZ4                  |
+| **Indexing**          | Binary tree (Objective-C)         | Optimized B-Tree (Swift)          |
+| **Query Optimization**| Basic filters                     | Cost-based query planner          |
+| **Platform Support**  | iOS/macOS (Objective-C)           | iOS 15+/macOS 12+ (Swift)         |
+| **License**           | MIT                               | Apache 2.0                        |
