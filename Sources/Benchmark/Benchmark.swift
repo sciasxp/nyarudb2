@@ -398,24 +398,21 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
-    private func cString(from string: String) -> UnsafePointer<CChar> {
-        return (string as NSString).utf8String!
-    }
     private func printReport(results: [BenchmarkResult]) {
         // Definição dos formatos
         // Para o cabeçalho usamos "%-13s" para deixar as colunas à esquerda com 13 caracteres (pode ajustar)
-        let header = String(
-            format:
-                "| %-13s | %-9s | %-13s | %-13s | %-10s | %-13s | %-13s | %-13s |",
-            cString(from: "Método"),
-            cString(from: "Partition"),
-            cString(from: "Inserção (s)"),
-            cString(from: "Consulta (s)"),
-            cString(from: "Update (s)"),
-            cString(from: "Exclusão (s)"),
-            cString(from: "Tamanho (MB)"),
-            cString(from: "Memória (MB)")
-        )
+        let columns = [
+            "Method".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Partition".padding(toLength: 9, withPad: " ", startingAt: 0),
+            "Insert (s)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Query (s)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Update (s)".padding(toLength: 10, withPad: " ", startingAt: 0),
+            "Delete (s)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Size (MB)".padding(toLength: 13, withPad: " ", startingAt: 0),
+            "Memory (MB)".padding(toLength: 13, withPad: " ", startingAt: 0),
+        ]
+
+        let header = "| " + columns.joined(separator: " | ") + " |"
 
         let separator = """
             |---------------|-----------|---------------|---------------|------------|---------------|---------------|---------------|
@@ -426,27 +423,28 @@ public final class NyaruDBBenchmark {
         print(separator)
 
         // Para cada resultado, formata cada campo com uma largura pré-definida.
-        for result in results {
-            let methodStr = String(
-                format: "%-13s",
-                cString(from: result.method.rawValue)
-            )
-            let partitionStr = result.partitioned ? "true" : "false"
-            let insertStr = String(format: "%-13.2f", result.insertTime)
-            let queryStr = String(format: "%-13.2f", result.queryTime)
-            let updateStr = String(format: "%-10.2f", result.updateTime)
-            let deleteStr = String(format: "%-13.2f", result.deleteTime)
-            let sizeStr = String(
-                format: "%-13.2f",
-                Double(result.fileSize) / 1_000_000
-            )
-            let memoryStr = String(format: "%-13d", result.memoryUsage)
+        results.map { result in
+            let formattedRow = [
+                result.method.rawValue.padding(toLength: 13, withPad: " ", startingAt: 0),
+                result.partitioned ? "true" : "false",
+                String(format: "%-13.2f", result.insertTime),
+                String(format: "%-13.2f", result.queryTime),
+                String(format: "%-10.2f", result.updateTime),
+                String(format: "%-13.2f", result.deleteTime),
+                String(format: "%-13.2f", Double(result.fileSize) / 1_000_000),
+                String(format: "%-13d", result.memoryUsage),
+            ]
+            .enumerated()
+            .map { index, element in
+                index == 1
+                    ? element.padding(toLength: 9, withPad: " ", startingAt: 0)
+                    : element
+            }
+            .joined(separator: " | ")
 
-            let row =
-                "| \(methodStr) | \(partitionStr.padding(toLength: 9, withPad: " ", startingAt: 0)) | \(insertStr) | \(queryStr) | \(updateStr) | \(deleteStr) | \(sizeStr) | \(memoryStr) |"
-
-            print(row)
+            return "| \(formattedRow) |"
         }
+        .forEach { print($0) }
 
         print("\n🔍 Legenda:")
         print("- Valores médios de 10 execuções consecutivas")
