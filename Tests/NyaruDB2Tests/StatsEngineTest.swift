@@ -1,3 +1,10 @@
+//
+//  StatsEngineTest.swift
+//  NyaruDB2
+//
+//  Created by demetrius albuquerque on 13/04/25.
+//
+
 import XCTest
 
 @testable import NyaruDB2

@@ -2,7 +2,7 @@
 //  BTreeIndexTest.swift
 //  NyaruDB2
 //
-//  Created by d.a.albuquerque on 11/04/25.
+//  Created by demetrius albuquerque on 11/04/25.
 //
 
 import XCTest
