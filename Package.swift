@@ -8,6 +8,7 @@ let package = Package(
         .library(
             name: "NyaruDB2",
             targets: ["NyaruDB2"]),
+        .executable(name: "QuickStartRunner", targets: ["QuickStartRunner"]),
     ],
     targets: [
         .target(
@@ -28,7 +29,7 @@ let package = Package(
             path: "Sources/Benchmark"
         ),
         .executableTarget(
-            name: "QuickStart",
+            name: "QuickStartRunner",
             dependencies: ["NyaruDB2"],
             path: "Sources/QuickStart"
         ),

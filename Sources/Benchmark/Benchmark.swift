@@ -2,8 +2,17 @@ import Compression
 import Foundation
 import NyaruDB2
 
-// MARK: - Resultados do Benchmark
+/**
+    A structure that encapsulates the results of a benchmarking process.
 
+    This type is designed to hold performance metrics and any related metadata obtained
+    during the execution of benchmarks. By conforming to the Codable protocol, it allows easy
+    encoding and decoding of benchmark results for purposes such as storage, reporting, or
+    further analysis.
+
+    - Note: Extend this structure with detailed properties that capture specific benchmark parameters
+        and outcomes as required by your application's performance testing needs.
+*/
 public struct BenchmarkResult: Codable {
     public let method: CompressionMethod
     public let partitioned: Bool
@@ -14,6 +23,15 @@ public struct BenchmarkResult: Codable {
     public let fileSize: Int64
     public let memoryUsage: Int
 
+    /**
+        An enumeration that defines the keys used for encoding and decoding the properties
+        of the related type.
+     
+        This enum conforms to both String and the CodingKey protocol, ensuring that each key
+        is represented by a string value. It is typically used in types that adopt the Codable
+        protocol, enabling a custom mapping between the type's properties and their corresponding
+        keys in an external representation (e.g., JSON).
+     */
     enum CodingKeys: String, CodingKey {
         case method, partitioned, insertTime, queryTime, updateTime, deleteTime,
             fileSize,
@@ -41,21 +59,39 @@ public struct BenchmarkResult: Codable {
     }
 }
 
-// MARK: - Benchmark da NyaruDB2
+/**
+    A utility class for benchmarking the performance of NyaruDB.
 
+    This class provides methods and tools to measure execution times and gather performance metrics for various operations
+    within the NyaruDB system. It is declared as a final class to prevent subclassing, ensuring consistent behavior across
+    different benchmarking scenarios.
+
+    Usage:
+        Instantiate and use this class to execute benchmark tests that help identify performance bottlenecks and 
+        opportunities for system optimization.
+
+    - Note: Benchmarking might affect system performance; it is recommended to run these tests in controlled environments.
+*/
 public final class NyaruDBBenchmark {
     private let documentCount = 100_000
     private let batchSize = 1_000
     private let testString = String(repeating: "NyaruDB", count: 100)
     private let shardValues = ["A", "B", "C", "D", "E"]
 
-    // Cria um diretório temporário único para cada execução
+    /// The URL representing the temporary directory used to store intermediate benchmark files.
     private var tempDir: URL {
         FileManager.default.temporaryDirectory.appendingPathComponent(
             "NyaruBenchmark-\(UUID().uuidString)"
         )
     }
 
+    /**
+     Executes the entire benchmark suite asynchronously.
+
+     This method runs all available benchmark tests and is designed to provide a full performance evaluation of the system.
+     
+     - Note: Since this function is asynchronous, it must be called with the 'await' keyword within an async context.
+    */
     public func runFullBenchmark() async {
         var results = [BenchmarkResult]()
 
@@ -80,6 +116,14 @@ public final class NyaruDBBenchmark {
         saveDetailedResults(results)
     }
 
+    
+    /** 
+        Executes a test scenario with the specified compression method and partitioning option.
+    
+        - Parameters:
+            - method: The compression method to be used during the test scenario.
+            - partitioned: A Boolean value indicating whether the test scenario should be partitioned.
+    */
     private func runTestScenario(method: CompressionMethod, partitioned: Bool)
         async -> BenchmarkResult
     {
@@ -101,7 +145,6 @@ public final class NyaruDBBenchmark {
             fatalError("Falha ao inicializar NyaruDB2: \(error)")
         }
 
-        // Realiza um warmup para estabilizar o desempenho.
         do {
             try await db.bulkInsert(
                 generateDocuments(count: 100, partitioned: partitioned),
@@ -139,6 +182,16 @@ public final class NyaruDBBenchmark {
         )
     }
 
+    /**
+        Measures the performance of insert operations on the given database instance.
+
+        - Parameters:
+            - db: The NyaruDB2 instance on which the insert performance will be measured.
+            - partitioned: A Boolean indicating whether the insert operations
+            should be executed in a partitioned manner.
+        - Returns: A Double value representing the performance metric (e.g., time elapsed or throughput).
+        - Note: This is an asynchronous function, so ensure you await its result.
+     */
     private func measureInsertPerformance(db: NyaruDB2, partitioned: Bool) async
         -> Double
     {
@@ -157,6 +210,14 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
+    /** 
+        Measures the query performance for a given NyaruDB2 instance.
+        - Parameters:
+            - db: An instance of NyaruDB2 representing the database being queried.
+            - partitioned: A Boolean flag indicating if the execution should consider partitioning strategy.
+        - Returns: A Double value representing the measured query performance.
+        - Note: This is an asynchronous function, so ensure you await its result.
+    */
     private func measureQueryPerformance(db: NyaruDB2, partitioned: Bool) async
         -> Double
     {
@@ -164,27 +225,24 @@ public final class NyaruDBBenchmark {
 
         do {
             if partitioned {
-                // Se estiver particionado, sabemos qual shard queremos.
-                // Suponha que a query seja "category == Test" e que para documentos particionados
-                // o valor real da categoria seja "Test". Assim podemos obter apenas aquele shard.
-                // Ajuste o valor conforme sua lógica de particionamento.
+                
                 let targetPartition = "Test"
-                // Aqui o StorageEngine deve ter um método que retorne o(s) shard(s) para o valor de partição.
+                
                 let shards = try await db.storage.getShardManagers(for: "test")
                     .filter { $0.id == targetPartition }
-                // Se não houver, retorne logo.
+                
                 guard !shards.isEmpty else {
                     return CFAbsoluteTimeGetCurrent() - start
                 }
 
-                // Consome os documentos apenas desse shard (ou desses shards, se houver mais de um)
+                
                 for shard in shards {
                     let docs: [TestDocument] = try await shard.loadDocuments()
-                    // Você pode ainda aplicar algum filtro extra se necessário
+                
                     _ = docs.filter { $0.category == targetPartition }
                 }
             } else {
-                // Cenário não particionado: percorre todos os shards
+                
                 var query = Query<TestDocument>(
                     collection: "test",
                     storage: db.storage,
@@ -202,16 +260,22 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
+    /**
+        Measures the update performance of the provided NyaruDB2 instance.
+
+        - Parameters:
+            - db: The NyaruDB2 instance on which the update performance will be measured.
+            - partitioned: A Boolean flag indicating whether the database is partitioned.
+        - Returns: A Double value representing the measured performance metric.
+    */
     private func measureUpdatePerformance(db: NyaruDB2, partitioned: Bool) async
         -> Double
     {
-        // Exemplo de update otimizado para particionado:
         let start = CFAbsoluteTimeGetCurrent()
 
         do {
             if partitioned {
-                // Se soubermos a chave de partição de forma determinística (por ex., "Test"),
-                // então atualizamos somente no shard correspondente.
+
                 let targetPartition = "Test"
                 let shards = try await db.storage.getShardManagers(for: "test")
                     .filter { $0.id == targetPartition }
@@ -219,12 +283,11 @@ public final class NyaruDBBenchmark {
                     return CFAbsoluteTimeGetCurrent() - start
                 }
 
-                // Carrega documentos somente do shard alvo
                 var docs: [TestDocument] = []
                 for shard in shards {
                     docs.append(contentsOf: try await shard.loadDocuments())
                 }
-                // Atualiza o documento com id == 1, por exemplo
+
                 if let documentToUpdate = docs.first(where: { $0.id == 1 }) {
                     let updatedDocument = TestDocument(
                         id: documentToUpdate.id,
@@ -240,7 +303,7 @@ public final class NyaruDBBenchmark {
                     )
                 }
             } else {
-                // Cenário não particionado: atualiza em todos os shards
+
                 var updatedDocuments = [TestDocument]()
                 let docs: [TestDocument] = try await db.fetch(from: "test")
                 updatedDocuments = docs.map { doc in
@@ -272,6 +335,12 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
+    /**
+        Measures the performance of the delete operation on the specified database.
+
+        - Parameter db: An instance of NyaruDB2 representing the database to be tested.
+        - Returns: A Double value indicating the measured performance, likely in terms of time or throughput.
+     */
     private func measureDeletePerformance(db: NyaruDB2) async -> Double {
         let start = CFAbsoluteTimeGetCurrent()
         do {
@@ -285,6 +354,15 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
+    /**
+        Generates an array of TestDocument instances.
+     
+        - Parameters:
+            - count: The number of documents to generate.
+            - partitioned: A Boolean flag indicating whether the generated documents should be partitioned.
+     
+        - Returns: An array of generated TestDocument instances.
+     */
     private func generateDocuments(count: Int, partitioned: Bool)
         -> [TestDocument]
     {
@@ -303,6 +381,12 @@ public final class NyaruDBBenchmark {
         }
     }
 
+    /**
+        Calculates the size of the database located at the specified file path.
+
+        - Parameter path: A string representing the file path to the database.
+        - Returns: The size of the database in bytes, represented as a 64-bit integer.
+     */
     private func calculateDatabaseSize(path: String) -> Int64 {
         let url = URL(fileURLWithPath: path)
         guard
@@ -324,6 +408,13 @@ public final class NyaruDBBenchmark {
         }
     }
 
+    /**
+        Calculates the current memory usage of the application.
+
+        This function measures the total memory being used and returns the value in bytes.
+     
+        - Returns: An integer representing the memory usage in bytes.
+     */
     private func measureMemoryUsage() -> Int {
         var info = mach_task_basic_info()
         var count =
@@ -343,22 +434,26 @@ public final class NyaruDBBenchmark {
         return Int(info.resident_size) / 1_000_000  // MB
     }
 
-    private func measureUpdatePerformance(db: NyaruDB2) async -> Double {
-        // Supondo que você tenha inserido previamente alguns documentos na coleção "test"
-        // e que você vá atualizar o documento com um determinado ID.
-        // Para o benchmark, vamos atualizar o campo "name" para incluir um sufixo.
+    /**
+        Asynchronously measures the update performance of the provided database instance.
 
-        // Primeiro, obtenha o documento que deseja atualizar – aqui estamos usando o ID 1, por exemplo.
-        // Em um cenário real o benchmark pode atualizar vários documentos.
+        This function performs update operations on a NyaruDB2 database and calculates a performance metric,
+        returning the result as a Double value.
+
+        - Parameter db: The NyaruDB2 database instance on which to measure update performance.
+        - Returns: A Double value representing the measured update performance.
+     */
+    private func measureUpdatePerformance(db: NyaruDB2) async -> Double {
+        
         var updatedDocuments = [TestDocument]()
 
-        // Busque todos os documentos da coleção "test"
+        
         do {
             let docs: [TestDocument] = try await db.fetch(from: "test")
-            // Atualize os documentos que satisfazem um predicado, por exemplo, id == 1.
+        
             updatedDocuments = docs.map { doc in
                 if doc.id == 1 {
-                    // Atualiza o nome, por exemplo, adicionando " - Updated"
+        
                     return TestDocument(
                         id: doc.id,
                         name: doc.name + " - Updated",
@@ -373,12 +468,8 @@ public final class NyaruDBBenchmark {
             print("Erro ao buscar documentos para update: \(error)")
         }
 
-        // Meça o tempo para atualizar os documentos na coleção "test".
         let start = CFAbsoluteTimeGetCurrent()
 
-        // Para cada documento atualizado que encontrou (por exemplo, apenas o de ID 1),
-        // chama a função de update.
-        // Se você atualizar vários documentos, poderá iterar sobre eles.
         if let documentToUpdate = updatedDocuments.first(where: { $0.id == 1 })
         {
             do {
@@ -398,9 +489,15 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
+    /**
+        Prints a detailed benchmark report.
+
+        This method processes an array of benchmark results and prints a formatted report summarizing the performance data.
+
+        - Parameter results: An array of `BenchmarkResult` items used to generate the report.
+    */
     private func printReport(results: [BenchmarkResult]) {
-        // Definição dos formatos
-        // Para o cabeçalho usamos "%-13s" para deixar as colunas à esquerda com 13 caracteres (pode ajustar)
+        
         let columns = [
             "Method".padding(toLength: 13, withPad: " ", startingAt: 0),
             "Partition".padding(toLength: 9, withPad: " ", startingAt: 0),
@@ -422,7 +519,6 @@ public final class NyaruDBBenchmark {
         print(header)
         print(separator)
 
-        // Para cada resultado, formata cada campo com uma largura pré-definida.
         results.map { result in
             let formattedRow = [
                 result.method.rawValue.padding(toLength: 13, withPad: " ", startingAt: 0),
@@ -456,6 +552,13 @@ public final class NyaruDBBenchmark {
         )
     }
 
+    /**
+        Saves detailed information of benchmark results.
+
+        This function processes an array of BenchmarkResult objects and saves them for further analysis. The detailed results may include performance metrics and additional diagnostic data.
+
+        - Parameter results: An array of BenchmarkResult instances containing benchmark metrics and related data.
+     */
     private func saveDetailedResults(_ results: [BenchmarkResult]) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -481,7 +584,16 @@ public final class NyaruDBBenchmark {
 
 }
 
-// Modelo de documento para os testes de benchmark.
+
+/**
+    A test document structure used within benchmarks.
+
+    This structure conforms to the Codable protocol for seamless encoding and decoding,
+    and the Equatable protocol to support equality comparisons.
+
+    Use this structure to represent documents in benchmarks and test the performance
+    of various operations such as serialization and integrity checks.
+*/
 public struct TestDocument: Codable, Equatable {
     public let id: Int
     public let name: String
@@ -489,8 +601,16 @@ public struct TestDocument: Codable, Equatable {
     public let content: String
 }
 
+/**
+An extension for the Array type that provides additional functionality
+tailored for use within benchmarking tasks.
+
+This extension may include custom methods and properties designed to
+enhance performance measurement and analysis.
+
+ */
 extension Array {
-    /// Divide o array em lotes de tamanho especificado.
+
     func chunked(into size: Int) -> [[Element]] {
         stride(from: 0, to: count, by: size).map {
             Array(self[$0..<Swift.min($0 + size, count)])
@@ -498,12 +618,11 @@ extension Array {
     }
 }
 
-// Execução do benchmark
-Task {
-    let benchmark = NyaruDBBenchmark()
-    await benchmark.runFullBenchmark()
-    exit(0)
+@main
+struct QuickStartRunner {
+    static func main() async {
+        let benchmark = NyaruDBBenchmark()
+        await benchmark.runFullBenchmark()
+        exit(0)
+    }
 }
-
-// Mantém o script ativo
-dispatchMain()

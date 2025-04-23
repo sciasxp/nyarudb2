@@ -1,6 +1,20 @@
 import Foundation
 
-// This is the refactored QueryEngine that now integrates with the QueryPlanner.
+
+/// A generic structure representing a query for a specific type of data.
+/// 
+/// This structure allows the creation and execution of queries on a collection
+/// of data, supporting predicates and key path-based filtering.
+///
+/// - Parameters:
+///   - T: The type of data being queried, which must conform to `Codable`.
+///
+/// Properties:
+/// - `collection`: The name of the collection being queried.
+/// - `predicates`: A list of field-based predicates used to filter the query results.
+/// - `storage`: The storage engine responsible for managing the underlying data.
+/// - `planner`: The query planner responsible for optimizing and executing the query.
+/// - `keyPathPredicates`: A list of key path-based predicates used for filtering the query results.
 public struct Query<T: Codable> {
     private let collection: String
     private var predicates: [(field: String, op: QueryOperator)] = []
@@ -8,7 +22,14 @@ public struct Query<T: Codable> {
     private let planner: QueryPlanner
     private var keyPathPredicates: [((T) -> AnyHashable, QueryOperator)] = []
 
-    // Initialize the query with storage and statistics for planning.
+    
+    /// Initializes a new instance of the `QueryEngine`.
+    ///
+    /// - Parameters:
+    ///   - collection: The name of the collection to be queried.
+    ///   - storage: The storage engine responsible for managing data persistence.
+    ///   - indexStats: A dictionary containing statistics for each index, where the key is the index name and the value is its corresponding `IndexStat`.
+    ///   - shardStats: An array of `ShardStat` objects representing statistics for each shard.
     public init(
         collection: String,
         storage: StorageEngine,
@@ -23,7 +44,14 @@ public struct Query<T: Codable> {
         )
     }
 
-    /// Adds a predicate to the query.
+    
+    /// Adds a filtering condition to the query based on the specified key path and query operator.
+    /// 
+    /// - Parameters:
+    ///   - keyPath: A key path to the property of the model `T` that will be used for filtering.
+    ///   - op: The `QueryOperator` that defines the condition to apply to the property.
+    /// 
+    /// - Note: This method modifies the current query by appending the specified condition.
     public mutating func `where`<V: Hashable>(
         _ keyPath: KeyPath<T, V>,
         _ op: QueryOperator
@@ -34,7 +62,12 @@ public struct Query<T: Codable> {
         keyPathPredicates.append((predicate, op))
     }
 
-    /// Returns an execution plan for debugging or optimization purposes.
+    
+    /// Provides a detailed execution plan for the current query.
+    ///
+    /// - Returns: An `ExecutionPlan` object that describes the steps and operations
+    ///   involved in executing the query. This can be used for debugging or
+    ///   optimizing query performance.
     public func explain() -> ExecutionPlan {
         let availableIndexes = Array(planner.indexStats.keys)
         return planner.optimize(
@@ -44,8 +77,14 @@ public struct Query<T: Codable> {
         )
     }
 
-    /// Executes the query based on the execution plan.
-    /// Currently, this implementation always uses a full scan but could be extended to support index-only and hybrid scans.
+    
+    /// Executes the query and returns an array of results of type `T`.
+    ///
+    /// This function performs the query asynchronously and may throw an error
+    /// if the execution fails.
+    ///
+    /// - Returns: An array of results of type `T`.
+    /// - Throws: An error if the query execution fails.
     public func execute() async throws -> [T] {
         let plan = explain()
 
@@ -59,11 +98,16 @@ public struct Query<T: Codable> {
         }
     }
 
+    /// Executes the query plan using only the index, without accessing the full data records.
+    ///
+    /// - Parameter plan: The execution plan that defines the query to be executed.
+    /// - Returns: An array of results of type `T` that match the query criteria.
+    /// - Throws: An error if the execution of the query fails.
+    /// - Note: This method is asynchronous and leverages the index for efficient query execution.
     private func executeIndexOnly(plan: ExecutionPlan) async throws -> [T] {
-        // Verifica se o plano usou um índice
+
         guard let indexField = plan.usedIndex else { return [] }
 
-        // Filtra os predicados referentes ao campo de índice e extrai o valor de igualdade
         let values =
             predicates
             .filter { $0.field == indexField }
@@ -74,7 +118,6 @@ public struct Query<T: Codable> {
                 return nil
             }
 
-        // Usa um TaskGroup para executar a busca para cada valor do índice em paralelo
         return try await withThrowingTaskGroup(of: [T].self) { group in
             for value in values {
                 group.addTask {
@@ -89,24 +132,30 @@ public struct Query<T: Codable> {
         }
     }
 
+    /// Executes a hybrid query plan asynchronously and returns the results.
+    ///
+    /// This method processes the provided execution plan, combining different
+    /// query strategies to retrieve the desired data. It is designed to handle
+    /// complex queries that may involve multiple steps or data sources.
+    ///
+    /// - Parameter plan: The `ExecutionPlan` object that defines the query strategy
+    ///   and steps to be executed.
+    /// - Returns: An array of results of type `T` that match the query criteria.
+    /// - Throws: An error if the execution of the query plan fails.
+    /// - Note: This method is asynchronous and must be called with `await`.
     private func executeHybrid(plan: ExecutionPlan) async throws -> [T] {
-        // Obtém todos os shards disponíveis para a coleção
+        
         let allShards = try await storage.getShardManagers(for: collection)
 
-        // Aplica o pruning dos shards com base em dados de ShardStat.
-        // Por exemplo, se o shard não possuir documentos (docCount == 0), ele é ignorado.
+        
         let shards = allShards.filter { shard in
             return shard.metadata.documentCount > 0
-            // Para uma lógica mais avançada, por exemplo:
-            // return shard.metadata.toShardStat().matches(any: predicates)
         }
 
-        // Processa os shards em paralelo usando um TaskGroup para filtrar os documentos
         return try await withThrowingTaskGroup(of: [T].self) { group in
             for shard in shards {
                 group.addTask {
                     let docs: [T] = try await shard.loadDocuments()
-                    // Filtra os documentos usando a nova função evaluateDocument que utiliza KeyPathPredicates
                     return docs.filter { self.evaluateDocument($0) }
                 }
             }
@@ -118,6 +167,17 @@ public struct Query<T: Codable> {
         }
     }
 
+    /// Executes a full scan of the database based on the provided execution plan.
+    ///
+    /// This method performs a comprehensive scan of all records in the database
+    /// to retrieve results that match the criteria specified in the execution plan.
+    ///
+    /// - Parameter plan: The `ExecutionPlan` object that defines the criteria and
+    ///   conditions for the scan.
+    /// - Returns: An array of objects of type `T` that match the execution plan.
+    /// - Throws: An error if the scan fails or encounters an issue during execution.
+    /// - Note: This operation may be resource-intensive as it scans all records
+    ///   in the database. Use with caution for large datasets.
     private func executeFullScan(plan: ExecutionPlan) async throws -> [T] {
         var results = [T]()
 
@@ -132,12 +192,22 @@ public struct Query<T: Codable> {
         return results
     }
 
+    /// Evaluates whether a given document satisfies certain conditions.
+    ///
+    /// - Parameter doc: The document of generic type `T` to be evaluated.
+    /// - Returns: A Boolean value indicating whether the document meets the evaluation criteria.
     internal func evaluateDocument(_ doc: T) -> Bool {
         return keyPathPredicates.allSatisfy { (predicate, op) in
             evaluateValue(predicate(doc), op: op)
         }
     }
 
+    /// Evaluates a given value against a specified query operator.
+    ///
+    /// - Parameters:
+    ///   - value: The value to be evaluated. Must conform to `AnyHashable`.
+    ///   - op: The `QueryOperator` that defines the evaluation logic.
+    /// - Returns: A Boolean indicating whether the value satisfies the condition defined by the query operator.
     private func evaluateValue(_ value: AnyHashable, op: QueryOperator) -> Bool
     {
         switch op {
@@ -221,134 +291,22 @@ public struct Query<T: Codable> {
 
     }
 
-    private func isEqual(_ a: Any, _ b: AnyHashable) -> Bool {
-        guard let aHashable = a as? AnyHashable else { return false }
-        return aHashable == b
-    }
-
-    private func isInRange(_ value: Any, lower: AnyHashable, upper: AnyHashable)
-        -> Bool
-    {
-        // Tenta comparar os valores convertendo para Double se possível.
-        if let dValue = toDouble(value), let dLower = toDouble(lower),
-            let dUpper = toDouble(upper)
-        {
-            return dValue >= dLower && dValue <= dUpper
-        }
-
-        // Se não for numérico, tenta comparar os valores convertendo para String.
-        if let sValue = stringValue(value), let sLower = stringValue(lower),
-            let sUpper = stringValue(upper)
-        {
-            return sValue >= sLower && sValue <= sUpper
-        }
-
-        return false
-    }
-
-    public func fetchStream(from storage: StorageEngine) -> AsyncThrowingStream<
-        T, Error
-    > {
-        AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    // Obtém os shards da coleção
-                    let shards = try await storage.getShardManagers(
-                        for: collection
-                    )
-                    // Itera sobre os shards
-                    for shard in shards {
-                        // Para cada documento do shard, via lazy stream
-                        for try await doc in shard.loadDocumentsLazy()
-                            as AsyncThrowingStream<T, Error>
-                        {
-                            // Usa nossa função evaluateDocument que acessa os keyPathPredicates
-                            if self.evaluateDocument(doc) {
-                                continuation.yield(doc)
-                            }
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func convertToDictionary(_ value: T) throws -> [String: Any] {
-        let data = try JSONEncoder().encode(value)
-        let obj = try JSONSerialization.jsonObject(with: data, options: [])
-        guard let dict = obj as? [String: Any] else {
-            throw NSError(
-                domain: "QueryEngine",
-                code: 0,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "Failed to convert object to dictionary"
-                ]
-            )
-        }
-        return dict
-    }
-
-    private func evaluatePredicate(documentValue: Any?, op: QueryOperator)
-        -> Bool
-    {
-        switch op {
-        case .exists:
-            return documentValue != nil
-        case .notExists:
-            return documentValue == nil
-        case .equal(let target):
-            return compareEquality(documentValue, target)
-        case .notEqual(let target):
-            return !compareEquality(documentValue, target)
-        case .lessThan(let target):
-            return compareNumeric(documentValue, target, using: <)
-        case .lessThanOrEqual(let target):
-            return compareNumeric(documentValue, target, using: <=)
-        case .greaterThan(let target):
-            return compareNumeric(documentValue, target, using: >)
-        case .greaterThanOrEqual(let target):
-            return compareNumeric(documentValue, target, using: >=)
-        case .between(let lower, let upper):
-            return compareNumeric(documentValue, lower, using: >=)
-                && compareNumeric(documentValue, upper, using: <=)
-        case .contains(let substring):
-            if let s1 = stringValue(documentValue),
-                let s2 = stringValue(substring)
-            {
-                return s1.contains(s2)
-            }
-            return false
-        case .startsWith(let prefix):
-            if let s1 = stringValue(documentValue) {
-                return s1.hasPrefix(prefix)
-            }
-            return false
-        case .endsWith(let suffix):
-            if let s1 = stringValue(documentValue) {
-                return s1.hasSuffix(suffix)
-            }
-            return false
-        default:
-            return false
-        }
-    }
-
-    private func compareEquality(_ value1: Any?, _ value2: Any) -> Bool {
-        if let d1 = toDouble(value1), let d2 = toDouble(value2) {
-            return d1 == d2
-        }
+    /// Compares two values for equality.
+    ///
+    /// - Parameters:
+    ///   - value1: The first value to compare. This value is optional and can be `nil`.
+    ///   - value2: The second value to compare. This value is non-optional.
+    /// - Returns: A Boolean value indicating whether the two values are considered equal.
         if let s1 = stringValue(value1), let s2 = stringValue(value2) {
             return s1 == s2
         }
         return false
     }
 
+    /// Converts a given value to a `Double` if possible.
+    ///
+    /// - Parameter value: The value to be converted, which can be of any type.
+    /// - Returns: A `Double` representation of the value if the conversion is successful, or `nil` if the value cannot be converted.
     private func toDouble(_ value: Any?) -> Double? {
         if let num = value as? NSNumber { return num.doubleValue }
         if let str = value as? String, let d = Double(str) { return d }
@@ -357,11 +315,27 @@ public struct Query<T: Codable> {
         return nil
     }
 
+    /// Converts the given value to a `String` if possible.
+    ///
+    /// - Parameter value: The value to be converted, which can be of any type or `nil`.
+    /// - Returns: A `String` representation of the value if it can be converted, or `nil` if the conversion is not possible.
     private func stringValue(_ value: Any?) -> String? {
         if let v = value { return "\(v)" }
         return nil
     }
 
+    /// Compares two numeric values based on a specified condition.
+    ///
+    /// This method is used to evaluate numeric comparisons within the query engine.
+    /// It takes two numeric values and a comparison operator, and determines whether
+    /// the condition is satisfied.
+    ///
+    /// - Parameters:
+    ///   - lhs: The left-hand side numeric value to compare.
+    ///   - rhs: The right-hand side numeric value to compare.
+    ///   - condition: The comparison operator to apply (e.g., `==`, `<`, `>`, etc.).
+    /// - Returns: A Boolean value indicating whether the comparison condition is satisfied.
+    /// - Note: This method assumes that both `lhs` and `rhs` are valid numeric types.
     private func compareNumeric(
         _ value1: Any?,
         _ value2: Any,
