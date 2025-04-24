@@ -1,0 +1,9 @@
+module: NyaruDB2
+author: Demetrius Albuquerque
+author_url: https://github.com/maltzsama
+github_url: https://github.com/galileostudio/nyarudb2
+output: docs
+theme: apple
+exclude: [Tests/*, Sources/Benchmark]
+documentation: Sources/NyaruDB2
+module-version: 1.0.0

@@ -2,17 +2,17 @@ import Compression
 import Foundation
 import NyaruDB2
 
-/**
-    A structure that encapsulates the results of a benchmarking process.
 
-    This type is designed to hold performance metrics and any related metadata obtained
-    during the execution of benchmarks. By conforming to the Codable protocol, it allows easy
-    encoding and decoding of benchmark results for purposes such as storage, reporting, or
-    further analysis.
+/// A structure that encapsulates the results of a benchmarking process.
+///
+/// This type is designed to hold performance metrics and any related metadata obtained
+/// during the execution of benchmarks. By conforming to the Codable protocol, it allows easy
+/// encoding and decoding of benchmark results for purposes such as storage, reporting, or
+/// further analysis.
+///
+/// - Note: Extend this structure with detailed properties that capture specific benchmark parameters
+///   and outcomes as required by your application's performance testing needs.
 
-    - Note: Extend this structure with detailed properties that capture specific benchmark parameters
-        and outcomes as required by your application's performance testing needs.
-*/
 public struct BenchmarkResult: Codable {
     public let method: CompressionMethod
     public let partitioned: Bool
@@ -23,15 +23,15 @@ public struct BenchmarkResult: Codable {
     public let fileSize: Int64
     public let memoryUsage: Int
 
-    /**
-        An enumeration that defines the keys used for encoding and decoding the properties
-        of the related type.
-     
-        This enum conforms to both String and the CodingKey protocol, ensuring that each key
-        is represented by a string value. It is typically used in types that adopt the Codable
-        protocol, enabling a custom mapping between the type's properties and their corresponding
-        keys in an external representation (e.g., JSON).
-     */
+    
+    /// An enumeration that defines the keys used for encoding and decoding the properties
+    /// of the related type.
+    /// 
+    /// This enum conforms to both String and the CodingKey protocol, ensuring that each key
+    /// is represented by a string value. It is typically used in types that adopt the Codable
+    /// protocol, enabling a custom mapping between the type's properties and their corresponding
+    /// keys in an external representation (e.g., JSON).
+    
     enum CodingKeys: String, CodingKey {
         case method, partitioned, insertTime, queryTime, updateTime, deleteTime,
             fileSize,
@@ -59,19 +59,19 @@ public struct BenchmarkResult: Codable {
     }
 }
 
-/**
-    A utility class for benchmarking the performance of NyaruDB.
 
-    This class provides methods and tools to measure execution times and gather performance metrics for various operations
-    within the NyaruDB system. It is declared as a final class to prevent subclassing, ensuring consistent behavior across
-    different benchmarking scenarios.
+/// A utility class for benchmarking the performance of NyaruDB.
+///
+/// This class provides methods and tools to measure execution times and gather performance metrics for various operations
+/// within the NyaruDB system. It is declared as a final class to prevent subclassing, ensuring consistent behavior across
+/// different benchmarking scenarios.
+///
+/// Usage:
+///   Instantiate and use this class to execute benchmark tests that help identify performance bottlenecks and 
+///   opportunities for system optimization.
+///
+/// - Note: Benchmarking might affect system performance; it is recommended to run these tests in controlled environments.
 
-    Usage:
-        Instantiate and use this class to execute benchmark tests that help identify performance bottlenecks and 
-        opportunities for system optimization.
-
-    - Note: Benchmarking might affect system performance; it is recommended to run these tests in controlled environments.
-*/
 public final class NyaruDBBenchmark {
     private let documentCount = 100_000
     private let batchSize = 1_000
@@ -85,13 +85,13 @@ public final class NyaruDBBenchmark {
         )
     }
 
-    /**
-     Executes the entire benchmark suite asynchronously.
-
-     This method runs all available benchmark tests and is designed to provide a full performance evaluation of the system.
-     
-     - Note: Since this function is asynchronous, it must be called with the 'await' keyword within an async context.
-    */
+    
+    /// Executes the entire benchmark suite asynchronously.
+    ///
+    /// This method runs all available benchmark tests and is designed to provide a full performance evaluation of the system.
+    /// 
+    /// - Note: Since this function is asynchronous, it must be called with the 'await' keyword within an async context.
+    
     public func runFullBenchmark() async {
         var results = [BenchmarkResult]()
 
@@ -117,17 +117,17 @@ public final class NyaruDBBenchmark {
     }
 
     
-    /** 
-        Executes a test scenario with the specified compression method and partitioning option.
+     
+    ///    Executes a test scenario with the specified compression method and partitioning option.
+    ///
+    ///    - Parameters:
+    ///        - method: The compression method to be used during the test scenario.
+    ///        - partitioned: A Boolean value indicating whether the test scenario should be partitioned.
     
-        - Parameters:
-            - method: The compression method to be used during the test scenario.
-            - partitioned: A Boolean value indicating whether the test scenario should be partitioned.
-    */
     private func runTestScenario(method: CompressionMethod, partitioned: Bool)
         async -> BenchmarkResult
     {
-        // Cria um caminho baseado no método de compactação
+        
         let scenarioDirName = partitioned ? "partitioned" : "default"
         let path = tempDir.appendingPathComponent(
             "\(method.rawValue)_\(scenarioDirName)"
@@ -182,16 +182,16 @@ public final class NyaruDBBenchmark {
         )
     }
 
-    /**
-        Measures the performance of insert operations on the given database instance.
-
-        - Parameters:
-            - db: The NyaruDB2 instance on which the insert performance will be measured.
-            - partitioned: A Boolean indicating whether the insert operations
-            should be executed in a partitioned manner.
-        - Returns: A Double value representing the performance metric (e.g., time elapsed or throughput).
-        - Note: This is an asynchronous function, so ensure you await its result.
-     */
+    
+    ///    Measures the performance of insert operations on the given database instance.
+    ///
+    ///    - Parameters:
+    ///        - db: The NyaruDB2 instance on which the insert performance will be measured.
+    ///        - partitioned: A Boolean indicating whether the insert operations
+    ///        should be executed in a partitioned manner.
+    ///    - Returns: A Double value representing the performance metric (e.g., time elapsed or throughput).
+    ///    - Note: This is an asynchronous function, so ensure you await its result.
+    
     private func measureInsertPerformance(db: NyaruDB2, partitioned: Bool) async
         -> Double
     {
@@ -209,15 +209,14 @@ public final class NyaruDBBenchmark {
         }
         return CFAbsoluteTimeGetCurrent() - start
     }
-
-    /** 
-        Measures the query performance for a given NyaruDB2 instance.
-        - Parameters:
-            - db: An instance of NyaruDB2 representing the database being queried.
-            - partitioned: A Boolean flag indicating if the execution should consider partitioning strategy.
-        - Returns: A Double value representing the measured query performance.
-        - Note: This is an asynchronous function, so ensure you await its result.
-    */
+ 
+    ///    Measures the query performance for a given NyaruDB2 instance.
+    ///    - Parameters:
+    ///        - db: An instance of NyaruDB2 representing the database being queried.
+    ///        - partitioned: A Boolean flag indicating if the execution should consider partitioning strategy.
+    ///    - Returns: A Double value representing the measured query performance.
+    ///    - Note: This is an asynchronous function, so ensure you await its result.
+    
     private func measureQueryPerformance(db: NyaruDB2, partitioned: Bool) async
         -> Double
     {
@@ -260,14 +259,14 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
-    /**
-        Measures the update performance of the provided NyaruDB2 instance.
-
-        - Parameters:
-            - db: The NyaruDB2 instance on which the update performance will be measured.
-            - partitioned: A Boolean flag indicating whether the database is partitioned.
-        - Returns: A Double value representing the measured performance metric.
-    */
+    
+    ///    Measures the update performance of the provided NyaruDB2 instance.
+    ///
+    ///    - Parameters:
+    ///        - db: The NyaruDB2 instance on which the update performance will be measured.
+    ///        - partitioned: A Boolean flag indicating whether the database is partitioned.
+    ///    - Returns: A Double value representing the measured performance metric.
+    
     private func measureUpdatePerformance(db: NyaruDB2, partitioned: Bool) async
         -> Double
     {
@@ -335,12 +334,12 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
-    /**
-        Measures the performance of the delete operation on the specified database.
-
-        - Parameter db: An instance of NyaruDB2 representing the database to be tested.
-        - Returns: A Double value indicating the measured performance, likely in terms of time or throughput.
-     */
+    
+    ///    Measures the performance of the delete operation on the specified database.
+    ///
+    ///    - Parameter db: An instance of NyaruDB2 representing the database to be tested.
+    ///    - Returns: A Double value indicating the measured performance, likely in terms of time or throughput.
+    
     private func measureDeletePerformance(db: NyaruDB2) async -> Double {
         let start = CFAbsoluteTimeGetCurrent()
         do {
@@ -354,15 +353,14 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
-    /**
-        Generates an array of TestDocument instances.
-     
-        - Parameters:
-            - count: The number of documents to generate.
-            - partitioned: A Boolean flag indicating whether the generated documents should be partitioned.
-     
-        - Returns: An array of generated TestDocument instances.
-     */
+    
+    /// Generates an array of TestDocument instances.
+    ///   
+    /// - Parameters:
+    ///     - count: The number of documents to generate.
+    ///     - partitioned: A Boolean flag indicating whether the generated documents should be partitioned.
+    /// - Returns: An array of generated TestDocument instances.
+
     private func generateDocuments(count: Int, partitioned: Bool)
         -> [TestDocument]
     {
@@ -381,12 +379,12 @@ public final class NyaruDBBenchmark {
         }
     }
 
-    /**
-        Calculates the size of the database located at the specified file path.
-
-        - Parameter path: A string representing the file path to the database.
-        - Returns: The size of the database in bytes, represented as a 64-bit integer.
-     */
+    
+    ///  Calculates the size of the database located at the specified file path.
+    ///
+    ///  - Parameter path: A string representing the file path to the database.
+    ///  - Returns: The size of the database in bytes, represented as a 64-bit integer.
+     
     private func calculateDatabaseSize(path: String) -> Int64 {
         let url = URL(fileURLWithPath: path)
         guard
@@ -408,13 +406,13 @@ public final class NyaruDBBenchmark {
         }
     }
 
-    /**
-        Calculates the current memory usage of the application.
+    
+    ///  Calculates the current memory usage of the application.
+    ///
+    ///  This function measures the total memory being used and returns the value in bytes.
+    /// 
+    ///  - Returns: An integer representing the memory usage in bytes.
 
-        This function measures the total memory being used and returns the value in bytes.
-     
-        - Returns: An integer representing the memory usage in bytes.
-     */
     private func measureMemoryUsage() -> Int {
         var info = mach_task_basic_info()
         var count =
@@ -434,15 +432,14 @@ public final class NyaruDBBenchmark {
         return Int(info.resident_size) / 1_000_000  // MB
     }
 
-    /**
-        Asynchronously measures the update performance of the provided database instance.
-
-        This function performs update operations on a NyaruDB2 database and calculates a performance metric,
-        returning the result as a Double value.
-
-        - Parameter db: The NyaruDB2 database instance on which to measure update performance.
-        - Returns: A Double value representing the measured update performance.
-     */
+    ///  Asynchronously measures the update performance of the provided database instance.
+    ///
+    ///  This function performs update operations on a NyaruDB2 database and calculates a performance metric,
+    ///  returning the result as a Double value.
+    ///
+    ///  - Parameter db: The NyaruDB2 database instance on which to measure update performance.
+    ///  - Returns: A Double value representing the measured update performance.
+    
     private func measureUpdatePerformance(db: NyaruDB2) async -> Double {
         
         var updatedDocuments = [TestDocument]()
@@ -489,13 +486,13 @@ public final class NyaruDBBenchmark {
         return CFAbsoluteTimeGetCurrent() - start
     }
 
-    /**
-        Prints a detailed benchmark report.
-
-        This method processes an array of benchmark results and prints a formatted report summarizing the performance data.
-
-        - Parameter results: An array of `BenchmarkResult` items used to generate the report.
-    */
+    
+    ///  Prints a detailed benchmark report.
+    ///
+    ///  This method processes an array of benchmark results and prints a formatted report summarizing the performance data.
+    ///
+    ///  - Parameter results: An array of `BenchmarkResult` items used to generate the report.
+    
     private func printReport(results: [BenchmarkResult]) {
         
         let columns = [
@@ -552,13 +549,13 @@ public final class NyaruDBBenchmark {
         )
     }
 
-    /**
-        Saves detailed information of benchmark results.
+    
+    ///  Saves detailed information of benchmark results.
+    ///
+    ///  This function processes an array of BenchmarkResult objects and saves them for further analysis. The detailed results may include performance metrics and additional diagnostic data.
+    ///
+    ///  - Parameter results: An array of BenchmarkResult instances containing benchmark metrics and related data.
 
-        This function processes an array of BenchmarkResult objects and saves them for further analysis. The detailed results may include performance metrics and additional diagnostic data.
-
-        - Parameter results: An array of BenchmarkResult instances containing benchmark metrics and related data.
-     */
     private func saveDetailedResults(_ results: [BenchmarkResult]) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -585,15 +582,15 @@ public final class NyaruDBBenchmark {
 }
 
 
-/**
-    A test document structure used within benchmarks.
 
-    This structure conforms to the Codable protocol for seamless encoding and decoding,
-    and the Equatable protocol to support equality comparisons.
+///  A test document structure used within benchmarks.
+///
+///  This structure conforms to the Codable protocol for seamless encoding and decoding,
+///  and the Equatable protocol to support equality comparisons.
+///
+///  Use this structure to represent documents in benchmarks and test the performance
+///  of various operations such as serialization and integrity checks.
 
-    Use this structure to represent documents in benchmarks and test the performance
-    of various operations such as serialization and integrity checks.
-*/
 public struct TestDocument: Codable, Equatable {
     public let id: Int
     public let name: String
@@ -601,14 +598,13 @@ public struct TestDocument: Codable, Equatable {
     public let content: String
 }
 
-/**
-An extension for the Array type that provides additional functionality
-tailored for use within benchmarking tasks.
 
-This extension may include custom methods and properties designed to
-enhance performance measurement and analysis.
+/// An extension for the Array type that provides additional functionality
+/// tailored for use within benchmarking tasks.
+/// 
+/// This extension may include custom methods and properties designed to
+/// enhance performance measurement and analysis.
 
- */
 extension Array {
 
     func chunked(into size: Int) -> [[Element]] {

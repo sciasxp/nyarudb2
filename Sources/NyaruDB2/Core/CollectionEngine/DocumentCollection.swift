@@ -1,28 +1,28 @@
 import Foundation
-/**
-A structure representing metadata for a collection in the database.
 
-This metadata includes the collection's name, the indexes associated with it,
-and the partition key used for organizing the data.
+///  A structure representing metadata for a collection in the database.
+///  
+///  This metadata includes the collection's name, the indexes associated with it,
+///  and the partition key used for organizing the data.
+///  
+///  - Properties:
+///  - name: The name of the collection.
+///  - indexes: An array of strings representing the indexes defined for the collection.
+///  - partitionKey: The key used to partition the data within the collection.
 
-- Properties:
-- name: The name of the collection.
-- indexes: An array of strings representing the indexes defined for the collection.
-- partitionKey: The key used to partition the data within the collection.
-*/
 public struct CollectionMetadata: Codable {
     public let name: String
     public let indexes: [String]
     public let partitionKey: String
 
-    /**
-        Initializes a new instance of `DocumentCollection`.
     
-        - Parameters:
-            - name: The name of the collection.
-            - indexes: An optional array of index names to be used in the collection. Defaults to an empty array.
-            - partitionKey: The key used to partition the collection.
-    */
+    ///  Initializes a new instance of `DocumentCollection`.
+    ///  
+    ///  - Parameters:
+    ///      - name: The name of the collection.
+    ///      - indexes: An optional array of index names to be used in the collection. Defaults to an empty array.
+    ///      - partitionKey: The key used to partition the collection.
+    
     public init(name: String, indexes: [String] = [], partitionKey: String) {
         self.name = name
         self.indexes = indexes
@@ -30,17 +30,17 @@ public struct CollectionMetadata: Codable {
     }
 }
 
-/**
-A class representing a collection of documents within the database.
 
-The `DocumentCollection` class is responsible for managing the documents
-in a specific collection, including their metadata, storage, and statistics.
+///  A class representing a collection of documents within the database.
+///  
+///  The `DocumentCollection` class is responsible for managing the documents
+///  in a specific collection, including their metadata, storage, and statistics.
+///  
+///  - Properties:
+///  - `metadata`: Metadata associated with the collection, such as its name and configuration.
+///  - `storage`: The storage engine responsible for persisting the documents in the collection.
+///  - `statsEngine`: The statistics engine responsible for tracking and managing collection statistics.
 
-- Properties:
-- `metadata`: Metadata associated with the collection, such as its name and configuration.
-- `storage`: The storage engine responsible for persisting the documents in the collection.
-- `statsEngine`: The statistics engine responsible for tracking and managing collection statistics.
-*/
 public class DocumentCollection {
     public let metadata: CollectionMetadata
     private let storage: StorageEngine

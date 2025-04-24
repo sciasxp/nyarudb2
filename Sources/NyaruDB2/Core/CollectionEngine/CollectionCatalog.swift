@@ -1,12 +1,11 @@
 import Foundation
 
-/**
-A singleton class responsible for managing and providing access to document collections.
 
-The `CollectionCatalog` class maintains a registry of collections, allowing for centralized
-management and retrieval of `DocumentCollection` instances. It is designed as a singleton
-to ensure a single, globally accessible instance throughout the application.
-*/
+/// A singleton class responsible for managing and providing access to document collections.
+/// The `CollectionCatalog` class maintains a registry of collections, allowing for centralized
+/// management and retrieval of `DocumentCollection` instances. It is designed as a singleton
+/// to ensure a single, globally accessible instance throughout the application.
+
 public class CollectionCatalog {
 
     public static let shared = CollectionCatalog()
@@ -16,16 +15,16 @@ public class CollectionCatalog {
     private init() {}
 
     
-    /* 
-    Creates a new collection with the specified parameters.
+     
+    /// Creates a new collection with the specified parameters.
+    ///
+    /// - Parameters:
+    ///  - name: The name of the collection to be created.
+    ///  - options: Additional options or configurations for the collection.
+    /// - Throws: An error if the collection cannot be created, such as if a collection
+    ///  with the same name already exists or if there is an issue with the provided options.
+    /// - Returns: A reference to the newly created collection.
     
-    - Parameters:
-      - name: The name of the collection to be created.
-      - options: Additional options or configurations for the collection.
-    - Throws: An error if the collection cannot be created, such as if a collection
-      with the same name already exists or if there is an issue with the provided options.
-    - Returns: A reference to the newly created collection.
-    */
     public func createCollection(
         storage: StorageEngine,
         statsEngine: StatsEngine,

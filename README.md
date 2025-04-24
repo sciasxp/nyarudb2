@@ -1,26 +1,124 @@
-# NyaruDB2
+# <p align="left">
+  <img src="./img/nyaru.svg" alt="Logo" height="40" style="vertical-align: baseline;"/>
+  <span style="font-size: 2em;"><strong>NyaruDB2</strong></span>
+</p>
 
-**NyaruDB2** is a lightweight, high-performance embedded database for iOS apps, designed to handle large datasets efficiently with modern Swift concurrency features. It supports advanced data management capabilities including compression, sharding, indexing.
 
-## Key Features
+# NyaruDB2  
+**Lightweight, high-performance embedded database for Swift**  
 
-### Performance Optimizations
-- **Sharded Storage Architecture**  
-  Automatic partitioning using configurable shard keys (e.g., `"category"`) with parallel I/O operations
-- **Multi-Algorithm Compression**  
-  Supports GZIP, LZFSE, and LZ4 compression via Apple's Compression framework
-- **B-Tree Indexing**  
-  Concurrent-safe indexing system with configurable minimum degree
+[![SwiftPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen)](https://github.com/apple/swift-package-manager) [![Platforms](https://img.shields.io/badge/iOS-15%2B%20%7C%20macOS-12%2B-blue)]() [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md) [![CI](https://img.shields.io/github/actions/workflow/status/galileostudio/NyaruDB2/ci.yml?branch=main)](https://github.com/galileostudio/NyaruDB2/actions)
 
-### Advanced Query Capabilities
-- **Type-Safe Query Builder**  
-  Supports 15+ predicate types including ranges, substring matching, and existence checks
-- **Lazy Loading**  
-  `AsyncThrowingStream` implementation for memory-efficient large dataset handling
-- **Query Optimization**  
-  Cost-based query planner with index selection and shard pruning
+NyaruDB2 is an embedded database optimized for iOS and macOS applications, designed to handle large datasets efficiently using modern Swift Concurrency. It provides:
 
-## Architecture Overview
+- **Automatic Sharding** with parallel I/O
+- **Multi-Algorithm Compression** (GZIP, LZFSE, LZ4)
+- **Actor-Safe B-Tree Indexing**
+- **Cost-Based Query Planner** with shard pruning
+- **Lazy Loading** via `AsyncThrowingStream`
+
+---
+
+## 🔖 Table of Contents
+1. [Installation](#installation)
+2. [Quick Start Example](#quick-start-example)
+3. [Key Features](#key-features)
+4. [Architecture](#architecture)
+5. [Documentation](#documentation)
+6. [Contributing](#contributing)
+7. [License](#license)
+8. [Acknowledgements](#acknowledgements)
+
+---
+
+## 📦 Installation
+
+NyaruDB2 supports Swift Package Manager:
+
+```swift
+// swift-tools-version:5.9
+
+let package = Package(
+    name: "YourApp",
+    dependencies: [
+        .package(url: "https://github.com/galileostudio/NyaruDB2.git", from: "1.0.0")
+    ],
+    targets: [
+        .target(
+            name: "YourApp",
+            dependencies: ["NyaruDB2"]
+        )
+    ]
+)
+```
+
+**Requirements**:
+- Xcode 15+
+- Swift 5.9+
+- iOS 15+ / macOS 12+
+
+---
+
+## 🚀 Quick Start Example
+
+```swift
+import NyaruDB2
+
+// Define a model
+struct User: Codable, Equatable {
+    let id: Int
+    let name: String
+    let createdAt: String
+}
+
+// 1. Initialize the database
+let db = try NyaruDB2(
+    path: "NyaruDB_Demo",
+    compressionMethod: .lzfse,
+    fileProtectionType: .completeUntilFirstUserAuthentication
+)
+
+// 2. Create a partitioned collection
+let users = try await db.createCollection(
+    name: "Users",
+    indexes: ["id"],
+    partitionKey: "createdAt"
+)
+
+// 3. Bulk insert documents
+try await users.bulkInsert([
+    User(id: 1, name: "Alice", createdAt: "2024-01"),
+    User(id: 2, name: "Bob", createdAt: "2024-02")
+])
+
+// 4. Perform a query
+var query = try await users.query() as Query<User>
+query.where(\User.id, .greaterThan(1))
+let results = try await query.execute()
+print(results)
+```
+
+---
+
+## ✨ Key Features
+
+### Performance
+- **Sharded Storage**: automatic partitioning by configurable shard keys
+- **Multi-Algorithm Compression**: GZIP, LZFSE, LZ4 via `Compression.framework`
+- **Actor-Safe B-Tree Indexing**: configurable minimum degree for performance tuning
+
+### Advanced Queries
+- **Type-Safe Query Builder**: supports 15+ predicates (equal, range, contains, startsWith, etc.)
+- **Lazy Loading**: `AsyncThrowingStream` for memory-efficient iterating
+- **Cost-Based Query Planner**: selects optimal indexes and prunes shards using statistics
+
+### Monitoring & Stats
+- **StatsEngine**: `CollectionStats`, `GlobalStats` with shard count, document count, and sizes
+- **IndexStats**: tracks value distribution, selectivity, access counts
+
+---
+
+## 🏗️ Architecture
 
 ```bash
 NyaruDB2/
@@ -28,109 +126,43 @@ NyaruDB2/
 │   ├── NyaruDB2/
 │   │   ├── Core/
 │   │   │   ├── Commons/          # FileProtection, DynamicDecoder
-│   │   │   ├── IndexManager/     # B-Tree implementation (BTreeIndex.swift)
+│   │   │   ├── IndexManager/     # BTreeIndex, IndexManager
 │   │   │   ├── QueryEngine/      # Query, QueryPlanner, ExecutionPlan
 │   │   │   ├── StatsEngine/      # CollectionStats, GlobalStats
-│   │   │   └── StorageEngine/    # ShardManager, Shard, Compression
+│   │   │   └── StorageEngine/    # ShardManager, Compression, StorageEngine
 │   │   ├── CollectionEngine/     # DocumentCollection, CollectionCatalog
-│   │   └── NyaruDB2.swift        # Main public API
-│   └── Benchmark/                # Performance test suite
-└── Tests/
+│   │   └── NyaruDB2.swift        # public API
+│   └── Benchmark/                # performance test suite
+└── Tests/                        # unit and integration tests
 ```
-
-## Getting Started
-
-### Requirements
-- Swift 5.9+
-- iOS 15+ / macOS 12+
-- Xcode 15+
-
-### Installation
-Add to your `Package.swift`:
-```swift
-dependencies: [
-    .package(url: "https://github.com/galileostudio/NyaruDB2.git", from: "1.0.0")
-]
-```
-
-## Usage Example
-
-```swift
-import NyaruDB2
-
-struct User: Codable {
-    let id: Int
-    let name: String
-    let createdAt: String
-}
-```
-
-- Initialize database
-```swift
-let db = try NyaruDB2(
-    path: "NyaruDB_Demo",
-    compressionMethod: .lzfse,
-    fileProtectionType: .completeUntilFirstUserAuthentication
-)
-```
-
-- Create collection with partition key
-```swift
-let users = try await db.createCollection(
-    name: "Users",
-    indexes: ["id"],
-    partitionKey: "createdAt"
-)
-```
-- Insert documents
-```swift
-try await users.bulkInsert([
-    User(id: 1, name: "Alice", createdAt: "2024-01"),
-    User(id: 2, name: "Bob", createdAt: "2024-02")
-])
-```
-
-- Query with predicates
-```swift
-let query = try await users.query()
-query.where(\User.id, .greaterThan(1))
-let results = try await query.execute()
-```
-
-## Documentation
-
-Explore full API reference at:  
-[https://nyarudb2.docs.example.com](https://nyarudb2.docs.example.com)
-
-## Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/improvement`)
-3. Commit changes (`git commit -am 'Add new feature'`)
-4. Push to branch (`git push origin feature/improvement`)
-5. Open Pull Request
-
-## License
-
-Apache 2.0 - See [LICENSE](LICENSE) file
 
 ---
 
-**Contact**: [demetrius.albuquerque@yahoo.com.br](mailto:demetrius.albuquerque@yahoo.com.br)  
+## 📚 Documentation
 
+Full API reference:  
+🔗 https://nyarudb2.docs.example.com
 
---- 
-## Acknowledgements
+---
 
-NyaruDB2 was inspired by the original [NyaruDB](https://github.com/kelp404/NyaruDB) project created by [kelp404](https://github.com/kelp404). While NyaruDB2 has been completely rewritten with significant architectural changes (including sharding, compression, and modern Swift concurrency), we appreciate the foundational ideas from the initial implementation.
+## 🤝 Contributing
 
-### Original Project Comparison
-| Feature               | NyaruDB                           | NyaruDB2                          |
-|-----------------------|-----------------------------------|-----------------------------------|
-| **Architecture**      | Single-file storage               | Sharded design                    |
-| **Concurrency**       | GCD-based async/sync              | Swift async/await (Actors)        |
-| **Compression**       | None                              | GZIP, LZFSE, LZ4                  |
-| **Indexing**          | Binary tree (Objective-C)         | Optimized B-Tree (Swift)          |
-| **Query Optimization**| Basic filters                     | Cost-based query planner          |
-| **Platform Support**  | iOS/macOS (Objective-C)           | iOS 15+/macOS 12+ (Swift)         |
-| **License**           | MIT                               | Apache 2.0                        |
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/awesome`
+3. Commit your changes: `git commit -m "Add awesome feature"`
+4. Push to your branch: `git push origin feature/awesome`
+5. Open a Pull Request
+
+Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for details.
+
+---
+
+## 📜 License
+
+Apache 2.0 © 2025 galileostudio. See [LICENSE](LICENSE.md).
+
+---
+
+## 🙏 Acknowledgements
+
+Inspired by the original [NyaruDB](https://github.com/kelp404/NyaruDB) by `kelp404`. Many thanks for the foundational ideas.

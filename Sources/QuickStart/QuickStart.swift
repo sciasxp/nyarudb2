@@ -21,16 +21,16 @@ struct Location: Codable, Equatable {
     let country: String
 }
 
-/**
- QuickStart guide for NyaruDB2.
- 
- This guide demonstrates how to:
- - Create a new database instance.
- - Register collections with customized partition and index configurations.
- - Perform basic CRUD operations using the NyaruCollection interface (formerly known as NDBCollection).
- 
- The documentation provides a comprehensive walk-through of setting up and interacting with the database, ensuring that developers can quickly integrate and utilize NyaruDB2 in their projects.
- */
+
+///  QuickStart guide for NyaruDB2.
+///  
+///  This guide demonstrates how to:
+///  - Create a new database instance.
+///  - Register collections with customized partition and index configurations.
+///  - Perform basic CRUD operations using the NyaruCollection interface (formerly known as NDBCollection).
+///  
+///  The documentation provides a comprehensive walk-through of setting up and interacting with the database, ensuring that developers can quickly integrate and utilize NyaruDB2 in their projects.
+
 func runQuickStart() async {
     do {
         // 1. Initialize the database.
