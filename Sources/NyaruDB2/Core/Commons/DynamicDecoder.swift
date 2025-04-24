@@ -1,13 +1,18 @@
 import Foundation
 
+/// An enumeration that provides functionality for dynamic decoding of data.
+/// This can be used to decode data whose structure is not known at compile time.
 public enum DynamicDecoder {
 
-    /// Extrai o valor de uma chave específica dos dados JSON.
+    
+    /// Extracts a value from the given data for a specified key.
+    ///
     /// - Parameters:
-    ///   - data: Os dados JSON.
-    ///   - key: A chave a ser extraída.
-    ///   - forIndex: Se verdadeiro, lança um erro específico para índices.
-    /// - Returns: O valor extraído como String.
+    ///   - data: The `Data` object containing the encoded information.
+    ///   - key: The key whose associated value needs to be extracted.
+    ///   - forIndex: A Boolean value indicating whether the extraction is for indexing purposes. Defaults to `false`.
+    /// - Returns: A `String` representing the extracted value.
+    /// - Throws: An error if the extraction process fails.
     public static func extractValue(
         from data: Data,
         key: String,
@@ -26,9 +31,17 @@ public enum DynamicDecoder {
         }
     }
 
-    // MARK: - Implementação Interna
+    /// An enumeration that provides functionality to extract dynamic values.
+    /// This is used internally to handle dynamic decoding of values.
     private enum DynamicValueExtractor {
 
+        /// An enumeration representing different types of values that can be decoded.
+        /// 
+        /// - Cases:
+        ///   - `string(String)`: Represents a string value.
+        ///   - `number(NSNumber)`: Represents a numeric value.
+        ///   - `bool(Bool)`: Represents a boolean value.
+        ///   - `null`: Represents a null value.
         enum ValueType: Decodable {
             case string(String)
             case number(NSNumber)
@@ -54,6 +67,15 @@ public enum DynamicDecoder {
             }
         }
 
+        /// Extracts a value associated with a given key from the provided data.
+        /// 
+        /// This method decodes the data to retrieve the value corresponding to the specified key.
+        /// 
+        /// - Parameters:
+        ///   - data: The `Data` object containing the encoded information.
+        ///   - key: The key for which the associated value is to be extracted.
+        /// - Returns: A `String` representing the value associated with the given key.
+        /// - Throws: An error if the decoding process fails or the key is not found.
         static func extractValue(from data: Data, key: String) throws -> String
         {
             let decoder = JSONDecoder()
@@ -80,6 +102,10 @@ public enum DynamicDecoder {
         }
     }
 
+    /// A private struct that conforms to the `CodingKey` protocol.
+    /// This is used to dynamically create coding keys at runtime,
+    /// enabling flexible decoding of data structures where the keys
+    /// are not known at compile time.
     private struct DynamicCodingKey: CodingKey {
         var stringValue: String
         var intValue: Int? { return nil }

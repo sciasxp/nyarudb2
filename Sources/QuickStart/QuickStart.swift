@@ -21,13 +21,20 @@ struct Location: Codable, Equatable {
     let country: String
 }
 
-/// QuickStart guide for NyaruDB2.
-/// This guide demonstrates how to create a database, register collections with individual partition and index configurations,
-/// and perform basic CRUD operations using the NyaruCollection (formerly NDBCollection) interface.
+
+///  QuickStart guide for NyaruDB2.
+///  
+///  This guide demonstrates how to:
+///  - Create a new database instance.
+///  - Register collections with customized partition and index configurations.
+///  - Perform basic CRUD operations using the NyaruCollection interface (formerly known as NDBCollection).
+///  
+///  The documentation provides a comprehensive walk-through of setting up and interacting with the database, ensuring that developers can quickly integrate and utilize NyaruDB2 in their projects.
+
 func runQuickStart() async {
     do {
         // 1. Initialize the database.
-        // Data is persisted in a folder named "NyaruDB_Tutorial".
+        // Data is persisted in a folder named "NyaruDB_Quickstart".
         let db = try NyaruDB2(
             path: "NyaruDB_QuickStart",
             compressionMethod: .none,     // You can change this to .gzip, .lzfse, etc.
@@ -94,11 +101,10 @@ func runQuickStart() async {
     }
 }
 
-// Run the tutorial asynchronously.
-Task {
-    await runQuickStart()
-    exit(0)
+@main
+struct QuickStartRunner {
+    static func main() async {
+        await runQuickStart()
+        exit(0)
+    }
 }
-
-// Keep the program running.
-dispatchMain()

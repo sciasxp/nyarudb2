@@ -1,8 +1,8 @@
 //
-//  QueryEngineTests.swift
+//  QueryEngineTest.swift
 //  NyaruDB2
 //
-//  Created by d.a.albuquerque on 13/04/25.
+//  Created by demetrius albuquerque on 13/04/25.
 //
 
 import XCTest
