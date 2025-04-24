@@ -1,26 +1,30 @@
 import Foundation
 
-/// Gerencia o registro e a recuperação de coleções configuradas no NyaruDB2.
-/// Essa classe mantém internamente um dicionário onde a chave é o nome da coleção
-/// e o valor é a instância de NyaruCollection com suas configurações específicas.
+
+/// A singleton class responsible for managing and providing access to document collections.
+/// The `CollectionCatalog` class maintains a registry of collections, allowing for centralized
+/// management and retrieval of `DocumentCollection` instances. It is designed as a singleton
+/// to ensure a single, globally accessible instance throughout the application.
+
 public class CollectionCatalog {
 
-    /// Singleton para acesso global ao CollectionManager.
     public static let shared = CollectionCatalog()
 
     private var collections: [String: DocumentCollection] = [:]
 
     private init() {}
 
-    /// Cria e registra uma nova coleção com as configurações fornecidas.
+    
+     
+    /// Creates a new collection with the specified parameters.
     ///
     /// - Parameters:
-    ///   - db: A instância de NyaruDB2 que gerencia o armazenamento.
-    ///   - name: Nome da coleção.
-    ///   - indexes: Lista de campos que devem ser indexados.
-    ///   - partitionKey: Campo usado para particionamento dos documentos na coleção.
-    ///
-    /// - Returns: A instância de NyaruCollection criada.
+    ///  - name: The name of the collection to be created.
+    ///  - options: Additional options or configurations for the collection.
+    /// - Throws: An error if the collection cannot be created, such as if a collection
+    ///  with the same name already exists or if there is an issue with the provided options.
+    /// - Returns: A reference to the newly created collection.
+    
     public func createCollection(
         storage: StorageEngine,
         statsEngine: StatsEngine,
@@ -39,27 +43,42 @@ public class CollectionCatalog {
         return newCollection
     }
 
-    /// Retorna a coleção registrada com o nome especificado, se existir.
+    /// Retrieves a `DocumentCollection` with the specified name.
+    ///
+    /// - Parameter name: The name of the collection to retrieve.
+    /// - Returns: The `DocumentCollection` associated with the given name, or `nil` if no such collection exists.
     public func getCollection(named name: String) -> DocumentCollection? {
         return collections[name]
     }
 
+    /// Removes a collection with the specified name from the storage engine.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the collection to be removed.
+    ///   - storage: The storage engine instance where the collection resides.
+    /// - Throws: An error if the operation fails.
+    /// - Note: This is an asynchronous function and must be called with `await`.
     public func removeCollection(named name: String, storage: StorageEngine)
         async throws
     {
-        // Chama o drop no StorageEngine para remover os arquivos da coleção.
         try await storage.dropCollection(name)
         collections.removeValue(forKey: name)
     }
 
+    /// Updates the configuration of a collection with the specified name.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the collection to update.
+    ///   - storage: The storage engine to be used for the collection.
+    ///   - partitionKey: The partition key to be used for the collection.
+    /// - Throws: An error if the update operation fails.
+    /// - Note: This is an asynchronous operation.
     public func updateCollectionConfiguration(
         named name: String,
         storage: StorageEngine,
         partitionKey: String
     ) async throws {
-        // Atualiza a chave de partição da coleção.
-        // Essa função pode ser expandida para atualizar também índices e demais configurações.
-        // Aqui, supomos que o StorageEngine possui o método setPartitionKey.
+        
         guard collections[name] != nil else {
             throw NSError(
                 domain: "CollectionEngine",
@@ -67,14 +86,18 @@ public class CollectionCatalog {
                 userInfo: [NSLocalizedDescriptionKey: "Collection not found"]
             )
         }
-        // Atualiza a configuração no StorageEngine.
+        
         await storage.setPartitionKey(
             for: name,
             key: partitionKey
         )
     }
 
-    /// Lista todas as coleções registradas.
+    
+    /// Retrieves a list of all document collections.
+    ///
+    /// - Returns: An array containing all `DocumentCollection` instances
+    ///   currently stored in the catalog.
     public func listCollections() -> [DocumentCollection] {
         return Array(collections.values)
     }

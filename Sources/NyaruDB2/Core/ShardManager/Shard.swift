@@ -1,10 +1,25 @@
 import Foundation
 
+/// A structure that represents metadata for a shard in the database.
+///
+/// `ShardMetadata` contains information about the shard, such as the number of documents it holds,
+/// and timestamps for when it was created and last updated.
+///
+/// - Properties:
+///   - documentCount: The total number of documents stored in the shard.
+///   - createdAt: The date and time when the shard was created.
+///   - updatedAt: The date and time when the shard was last updated.
 public struct ShardMetadata: Codable {
     public var documentCount: Int
     public var createdAt: Date
     public var updatedAt: Date
 
+    /// Initializes a new instance of the `Shard` class.
+    ///
+    /// - Parameters:
+    ///   - documentCount: The number of documents in the shard. Defaults to `0`.
+    ///   - createdAt: The date and time when the shard was created. Defaults to the current date and time.
+    ///   - updatedAt: The date and time when the shard was last updated. Defaults to the current date and time.
     public init(
         documentCount: Int = 0,
         createdAt: Date = Date(),
@@ -16,6 +31,18 @@ public struct ShardMetadata: Codable {
     }
 }
 
+/// Represents a shard in the database, which is a unit of data storage and management.
+///
+/// A `Shard` contains metadata, a unique identifier, and configuration details such as
+/// compression and file protection settings. It also includes a cache for storing documents.
+///
+/// - Properties:
+///   - `id`: A unique identifier for the shard.
+///   - `url`: The file URL where the shard is stored.
+///   - `metadata`: Metadata associated with the shard, such as its state and configuration.
+///   - `compressionMethod`: The method used to compress data within the shard.
+///   - `fileProtectionType`: The file protection level applied to the shard's storage.
+///   - `documentCache`: An in-memory cache for storing documents, keyed by their identifiers.
 public class Shard {
     public let id: String
     public let url: URL
@@ -24,6 +51,14 @@ public class Shard {
     public let fileProtectionType: FileProtectionType
     private var documentCache: NSCache<NSString, NSArray> = NSCache()
 
+    /// Initializes a new instance of `Shard`.
+    ///
+    /// - Parameters:
+    ///   - id: A unique identifier for the shard.
+    ///   - url: The file URL where the shard is stored.
+    ///   - metadata: Metadata associated with the shard. Defaults to an empty `ShardMetadata` instance.
+    ///   - compressionMethod: The compression method used for the shard. Defaults to `.none`.
+    ///   - fileProtectionType: The file protection type for the shard. Defaults to `.none`.
     public init(
         id: String,
         url: URL,
@@ -38,19 +73,30 @@ public class Shard {
         self.fileProtectionType = fileProtectionType
     }
 
+    /// Updates the metadata of the shard with the given document count and update timestamp.
+    ///
+    /// - Parameters:
+    ///   - documentCount: The number of documents in the shard.
+    ///   - updatedAt: The date and time when the shard was last updated.
     public func updateMetadata(documentCount: Int, updatedAt: Date) {
         self.metadata.documentCount = documentCount
         self.metadata.updatedAt = updatedAt
     }
 
+    /// Loads and decodes documents of the specified type from the shard.
+    ///
+    /// This method asynchronously retrieves and decodes documents stored in the shard
+    /// into an array of the specified `Codable` type.
+    ///
+    /// - Returns: An array of decoded documents of type `T`.
+    /// - Throws: An error if the documents cannot be loaded or decoded.
+    /// - Note: Ensure that the type `T` conforms to the `Codable` protocol.
     public func loadDocuments<T: Codable>() async throws -> [T] {
         let key = cacheKey(for: T.self)
-        // Tenta obter os documentos do cache
         if let cached = documentCache.object(forKey: key) as? [T] {
             return cached
         }
 
-        // Se o arquivo não existir, retorna array vazio
         guard FileManager.default.fileExists(atPath: url.path) else {
             return []
         }
@@ -58,11 +104,15 @@ public class Shard {
         let compressedData = try Data(contentsOf: url)
         let data = try decompressData(compressedData, method: compressionMethod)
         let docs = try JSONDecoder().decode([T].self, from: data)
-        // Armazena os documentos no cache
         documentCache.setObject(docs as NSArray, forKey: key)
         return docs
     }
 
+    /// Saves an array of documents to the shard.
+    ///
+    /// - Parameter documents: An array of documents conforming to the `Codable` protocol to be saved.
+    /// - Throws: An error if the save operation fails.
+    /// - Note: This is an asynchronous function and should be called with `await`.
     public func saveDocuments<T: Codable>(_ documents: [T]) async throws {
         let data = try JSONEncoder().encode(documents)
         let compressedData = try compressData(data, method: compressionMethod)
@@ -80,6 +130,11 @@ public class Shard {
         documentCache.setObject(documents as NSArray, forKey: key)
     }
 
+    /// Appends a document to the shard.
+    ///
+    /// - Parameters:
+    ///   - document: The document to append, conforming to the `Codable` protocol.
+    ///   - jsonData: The JSON-encoded data representation of the document.
     public func appendDocument<T: Codable>(_ document: T, jsonData: Data)
         async throws
     {
@@ -88,6 +143,19 @@ public class Shard {
         try await saveDocuments(documents)
     }
 
+    /// Loads documents lazily as an asynchronous throwing stream.
+    ///
+    /// This method returns an `AsyncThrowingStream` that allows you to iterate over
+    /// documents of the specified type `T` conforming to `Codable`. The documents
+    /// are loaded lazily, meaning they are fetched and decoded on demand as you
+    /// iterate through the stream.
+    ///
+    /// - Returns: An `AsyncThrowingStream` of type `T` that provides access to the
+    ///   documents. The stream may throw an error during iteration if an issue
+    ///   occurs while loading or decoding the documents.
+    ///
+    /// - Throws: An error if the stream encounters an issue while loading or decoding
+    ///   the documents.
     public func loadDocumentsLazy<T: Codable>() -> AsyncThrowingStream<T, Error>
     {
         AsyncThrowingStream { continuation in
@@ -105,6 +173,10 @@ public class Shard {
         }
     }
 
+    /// Generates a cache key for a given Codable type.
+    ///
+    /// - Parameter type: The type conforming to `Codable` for which the cache key is generated.
+    /// - Returns: An `NSString` representing the cache key for the specified type.
     private func cacheKey<T: Codable>(for type: T.Type) -> NSString {
         return "\(String(describing: type))_docs" as NSString
     }

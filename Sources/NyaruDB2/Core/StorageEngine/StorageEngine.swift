@@ -1,5 +1,16 @@
 import Foundation
 
+/// The `StorageEngine` actor is responsible for managing the core storage functionality of the database.
+/// It handles the configuration, partitioning, and management of collections, shards, and indexes.
+///
+/// Properties:
+/// - `baseURL`: The base URL where the storage engine operates.
+/// - `compressionMethod`: The method used for compressing stored data.
+/// - `fileProtectionType`: The type of file protection applied to stored data.
+/// - `collectionPartitionKeys`: A dictionary mapping collection names to their partition keys.
+/// - `activeShardManagers`: A dictionary of active shard managers, keyed by collection name.
+/// - `indexManagers`: A dictionary of index managers, keyed by collection name.
+/// - `statsEngine`: A lazily initialized instance of `StatsEngine` for gathering storage statistics.
 public actor StorageEngine {
 
     private let baseURL: URL
@@ -10,6 +21,10 @@ public actor StorageEngine {
     public var indexManagers: [String: IndexManager<String>] = [:]
     private lazy var statsEngine: StatsEngine = StatsEngine(storage: self)
 
+    /// An enumeration representing errors that can occur in the storage engine.
+    ///
+    /// This enum conforms to the `Error` protocol, allowing instances of `StorageError`
+    /// to be thrown and handled as part of Swift's error-handling mechanism.
     public enum StorageError: Error {
         case invalidDocument
         case partitionKeyNotFound(String)
@@ -18,6 +33,12 @@ public actor StorageEngine {
         case updateDocumentNotFound
     }
 
+    /// Initializes a new instance of the `StorageEngine` class.
+    ///
+    /// - Parameters:
+    ///   - path: The file path where the storage engine will operate.
+    ///   - compressionMethod: The method used for compressing data. Defaults to `.none`.
+    ///   - fileProtectionType: The file protection level to apply. Defaults to `.none`.
     public init(
         path: String,
         compressionMethod: CompressionMethod = .none,
@@ -34,6 +55,14 @@ public actor StorageEngine {
         )
     }
 
+    /// Inserts a document into the specified collection in the storage engine.
+    ///
+    /// - Parameters:
+    ///   - document: The document to be inserted. Must conform to the `Codable` protocol.
+    ///   - collection: The name of the collection where the document will be stored.
+    ///   - indexField: An optional field to be used as an index for the document. Defaults to `nil`.
+    /// - Throws: An error if the insertion fails.
+    /// - Note: This method is asynchronous and must be called with `await`.
     public func insertDocument<T: Codable>(
         _ document: T,
         collection: String,
@@ -41,7 +70,6 @@ public actor StorageEngine {
     ) async throws {
         let jsonData = try JSONEncoder().encode(document)
 
-        // 1. Otimização: Decodificação parcial apenas para chaves necessárias
         let partitionField = collectionPartitionKeys[collection]
         let partitionValue: String =
             partitionField != nil
@@ -50,15 +78,14 @@ public actor StorageEngine {
                 key: partitionField!
             ) : "default"
 
-        // 2. Gerenciamento eficiente de shards
         let shardManager = try await getOrCreateShardManager(for: collection)
         let shard = try await shardManager.getOrCreateShard(id: partitionValue)
 
-        // 3. Operações de I/O assíncronas
+
         try await shard.appendDocument(document, jsonData: jsonData)
 
         let indexManager = indexManagers[collection] ?? IndexManager<String>()
-        indexManagers[collection] = indexManager  // salva no dicionário caso seja recém-criado
+        indexManagers[collection] = indexManager
         if let unwrappedIndexField = indexField {
             try await indexManager.upsertIndex(for: unwrappedIndexField, jsonData: jsonData)
         }
@@ -67,6 +94,15 @@ public actor StorageEngine {
 
     }
 
+    /// Fetches documents from the specified collection and decodes them into the specified type.
+    ///
+    /// This method retrieves all documents from the given collection and attempts to decode them
+    /// into the specified `Codable` type `T`. The operation is asynchronous and may throw an error
+    /// if the fetch or decoding process fails.
+    ///
+    /// - Parameter collection: The name of the collection to fetch documents from.
+    /// - Returns: An array of decoded objects of type `T`.
+    /// - Throws: An error if the fetch operation or decoding process fails.
     public func fetchDocuments<T: Codable>(from collection: String) async throws
         -> [T]
     {
@@ -76,21 +112,39 @@ public actor StorageEngine {
             .flatMap { $0 } ?? []
     }
 
+    /// Fetches records from the specified collection that match the given field and value.
+    ///
+    /// This method performs an asynchronous operation to retrieve records from the index
+    /// of the specified collection. The records are decoded into the specified generic type `T`.
+    ///
+    /// - Parameters:
+    ///   - collection: The name of the collection to fetch records from.
+    ///   - field: The name of the field to match against.
+    ///   - value: The value to match in the specified field.
+    /// - Returns: An array of decoded objects of type `T` that match the specified criteria.
+    /// - Throws: An error if the fetch operation fails or if decoding the records fails.
     public func fetchFromIndex<T: Codable>(
         collection: String,
         field: String,
         value: String
     ) async throws -> [T] {
-        // Verifica se existe um indexManager para a coleção
         guard let indexManager = indexManagers[collection] else {
             return []
         }
-        // Realiza a busca no índice
         let dataArray = await indexManager.search(field, value: value)
-        // Decodifica cada item de Data para o tipo T
         return try dataArray.map { try JSONDecoder().decode(T.self, from: $0) }
     }
 
+    /// Fetches documents lazily from the specified collection.
+    ///
+    /// This method returns an `AsyncThrowingStream` that allows you to asynchronously
+    /// iterate over the documents in the collection. Each document is decoded into
+    /// the specified `Codable` type `T`.
+    ///
+    /// - Parameter collection: The name of the collection to fetch documents from.
+    /// - Returns: An `AsyncThrowingStream` of type `T` that provides asynchronous access
+    ///   to the documents in the collection.
+    /// - Throws: An error if the operation fails during document retrieval or decoding.
     public func fetchDocumentsLazy<T: Codable>(from collection: String)
         -> AsyncThrowingStream<T, Error>
     {
@@ -111,6 +165,14 @@ public actor StorageEngine {
         }
     }
 
+    /// Deletes documents from the specified collection that satisfy the given predicate.
+    ///
+    /// - Parameters:
+    ///   - predicate: A closure that takes an instance of type `T` and returns a Boolean value
+    ///     indicating whether the document should be deleted.
+    ///   - collection: The name of the collection from which documents will be deleted.
+    /// - Throws: An error if the deletion process fails.
+    /// - Note: This method is asynchronous and must be called with `await`.
     public func deleteDocuments<T: Codable>(
         where predicate: @escaping (T) -> Bool,
         from collection: String
@@ -129,6 +191,18 @@ public actor StorageEngine {
         try await statsEngine.updateCollectionMetadata(for: collection)
     }
 
+    /// Updates a document in the specified collection that matches the given predicate.
+    ///
+    /// - Parameters:
+    ///   - document: The document of type `T` to update. Must conform to `Codable`.
+    ///   - collection: The name of the collection where the document resides.
+    ///   - predicate: A closure that takes a document of type `T` as its argument and
+    ///     returns a Boolean value indicating whether the document matches the criteria.
+    ///   - indexField: An optional field name to use as an index for optimizing the update operation.
+    ///
+    /// - Throws: An error if the update operation fails.
+    ///
+    /// - Note: This method is asynchronous and must be called with `await`.
     public func updateDocument<T: Codable>(
         _ document: T,
         in collection: String,
@@ -167,6 +241,14 @@ public actor StorageEngine {
         }
     }
 
+    /// Inserts multiple documents into the specified collection in bulk.
+    ///
+    /// - Parameters:
+    ///   - documents: An array of documents conforming to the `Codable` protocol to be inserted.
+    ///   - collection: The name of the collection where the documents will be inserted.
+    ///   - indexField: An optional field name to be used as an index for the documents. Defaults to `nil`.
+    /// - Throws: An error if the insertion fails.
+    /// - Note: This method is asynchronous and must be called with `await`.
     public func bulkInsertDocuments<T: Codable>(
         _ documents: [T],
         collection: String,
@@ -235,33 +317,46 @@ public actor StorageEngine {
         try await self.statsEngine.updateCollectionMetadata(for: collection)
     }
 
+    /// Counts the number of documents in the specified collection.
+    ///
+    /// - Parameter collection: The name of the collection to count documents in.
+    /// - Returns: The total number of documents in the specified collection.
+    /// - Throws: An error if the operation fails.
+    /// - Note: This is an asynchronous method and must be called with `await`.
     public func countDocuments(in collection: String) async throws -> Int {
         return activeShardManagers[collection]?.allShards()
             .map(\.metadata.documentCount)
             .reduce(0, +) ?? 0
     }
 
+    /// Drops the specified collection from the storage engine.
+    ///
+    /// This method removes all data associated with the given collection name.
+    ///
+    /// - Parameter collection: The name of the collection to be dropped.
+    /// - Throws: An error if the operation fails.
+    /// - Note: This operation is asynchronous and must be awaited.
     public func dropCollection(_ collection: String) async throws {
-        // Remove o diretório da coleção
         let collectionURL = baseURL.appendingPathComponent(
             collection,
             isDirectory: true
         )
         try FileManager.default.removeItem(at: collectionURL)
 
-        // Remove a coleção dos gerenciadores ativos
         activeShardManagers.removeValue(forKey: collection)
         indexManagers.removeValue(forKey: collection)
     }
 
+    /// Lists all the collections available in the storage engine.
+    ///
+    /// - Returns: An array of strings representing the names of the collections.
+    /// - Throws: An error if the operation fails.
     public func listCollections() throws -> [String] {
-        // Obtém todos os itens contidos no diretório base.
         let items = try FileManager.default.contentsOfDirectory(
             at: baseURL,
             includingPropertiesForKeys: nil
         )
 
-        // Filtra apenas os itens que são diretórios (que são nossas coleções)
         let collections = items.filter { url in
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(
@@ -271,10 +366,16 @@ public actor StorageEngine {
             return isDirectory.boolValue
         }
 
-        // Retorna os nomes dos diretórios
         return collections.map { $0.lastPathComponent }
     }
 
+    /// Retrieves the shard managers associated with a specific collection.
+    ///
+    /// This asynchronous function fetches all the shards for the given collection name.
+    ///
+    /// - Parameter collection: The name of the collection for which shard managers are to be retrieved.
+    /// - Returns: An array of `Shard` objects representing the shard managers for the specified collection.
+    /// - Throws: An error if the operation fails, such as issues with accessing the storage or invalid collection name.
     public func getShardManagers(for collection: String) async throws -> [Shard]
     {
         guard let shardManager = activeShardManagers[collection] else {
@@ -283,6 +384,11 @@ public actor StorageEngine {
         return shardManager.allShards()
     }
 
+    /// Retrieves the shard associated with a specific partition within a given collection.
+    ///
+    /// - Parameters:
+    ///   - partition: The identifier of the partition for which the shard is being retrieved.
+    ///   - collection: The name of the collection containing the partition.
     public func getShard(forPartition partition: String, in collection: String)
         async throws -> Shard?
     {
@@ -290,6 +396,12 @@ public actor StorageEngine {
         return shards.first(where: { $0.id == partition })
     }
 
+    /// Retrieves the shard manager for the specified collection, or creates a new one if it does not exist.
+    ///
+    /// - Parameter collection: The name of the collection for which the shard manager is required.
+    /// - Returns: The shard manager associated with the specified collection.
+    /// - Throws: An error if the shard manager cannot be retrieved or created.
+    /// - Note: This is an asynchronous function and must be called with `await`.
     private func getOrCreateShardManager(for collection: String) async throws
         -> ShardManager
     {
@@ -315,6 +427,16 @@ public actor StorageEngine {
     }
 
 
+    /// Performs a bulk update of indexes for a specified collection.
+    ///
+    /// - Parameters:
+    ///   - collection: The name of the collection where the indexes will be updated.
+    ///   - updates: An array of tuples containing the index field, index key, and associated data to update.
+    ///     - indexField: The field name of the index to be updated.
+    ///     - indexKey: The key of the index to be updated.
+    ///     - data: The data associated with the index key to be updated.
+    /// 
+    /// This method is asynchronous and allows for batch processing of index updates.
     public func bulkUpdateIndexes(
         collection: String,
         updates: [(indexField: String, indexKey: String, data: Data)]
@@ -333,10 +455,23 @@ public actor StorageEngine {
         }
     }
 
+    /// Sets the partition key for a specified collection.
+    ///
+    /// - Parameters:
+    ///   - collection: The name of the collection for which the partition key is being set.
+    ///   - key: The key to be used as the partition key for the collection.
     public func setPartitionKey(for collection: String, key: String) {
         collectionPartitionKeys[collection] = key
     }
 
+    /// Returns the directory URL for the specified collection.
+    ///
+    /// This method asynchronously retrieves the directory URL where the data
+    /// for the given collection is stored.
+    ///
+    /// - Parameter collection: The name of the collection for which the directory URL is required.
+    /// - Returns: A `URL` pointing to the directory of the specified collection.
+    /// - Throws: An error if the directory cannot be determined or accessed.
     public func collectionDirectory(for collection: String) async throws -> URL
     {
         let collectionURL = baseURL.appendingPathComponent(
@@ -346,6 +481,17 @@ public actor StorageEngine {
         return collectionURL
     }
 
+    /// Repartitions a collection by changing its partition key.
+    ///
+    /// This method allows you to repartition an existing collection by specifying a new partition key.
+    /// The operation is performed asynchronously and may throw an error if the operation fails.
+    ///
+    /// - Parameters:
+    ///   - collection: The name of the collection to repartition.
+    ///   - newPartitionKey: The new partition key to be used for the collection.
+    ///   - type: The type of the objects stored in the collection, conforming to `Codable`.
+    ///
+    /// - Throws: An error if the repartitioning operation fails.
     public func repartitionCollection<T: Codable>(
         collection: String,
         newPartitionKey: String,
@@ -383,7 +529,21 @@ public actor StorageEngine {
 
 }
 
+/// An extension to the `Sequence` protocol that provides additional functionality
+/// for sequences. This extension can be used to add custom methods or computed
+/// properties to all types conforming to `Sequence`.
 extension Sequence {
+    /// Asynchronously performs the given operation on each element of the collection.
+    ///
+    /// This method allows you to iterate over the elements of the collection and
+    /// execute an asynchronous operation for each element. The operation can throw
+    /// errors, which will be propagated to the caller.
+    ///
+    /// - Parameter operation: An asynchronous closure that takes an element of the
+    ///   collection as its parameter and performs an operation.
+    /// - Throws: Rethrows any error thrown by the `operation` closure.
+    /// - Note: The order in which the `operation` is applied to the elements is not
+    ///   guaranteed to be sequential.
     func asyncForEach(
         _ operation: (Element) async throws -> Void
     ) async rethrows {
@@ -391,6 +551,11 @@ extension Sequence {
             try await operation(element)
         }
     }
+    /// Applies the given asynchronous transformation to each element of the collection concurrently and returns an array of the transformed elements.
+    /// 
+    /// - Parameter transform: An asynchronous closure that takes an element of the collection as its argument and returns a transformed value.
+    /// - Returns: An array containing the transformed elements.
+    /// - Throws: Rethrows any error thrown by the `transform` closure.
     func concurrentMap<T>(_ transform: @escaping (Element) async throws -> T)
         async rethrows -> [T]
     {
@@ -403,7 +568,16 @@ extension Sequence {
     }
 }
 
+/// An extension to the `Dictionary` type that provides additional functionality
+/// specific to the `StorageEngine` implementation in the NyaruDB2 project.
 extension Dictionary {
+    /// Asynchronously iterates over each key-value pair in the storage engine.
+    ///
+    /// - Parameter body: A closure that takes a key and a value as its parameters.
+    ///   The closure is executed asynchronously for each key-value pair in the storage.
+    ///   It can throw an error, which will propagate out of this method.
+    /// - Throws: Rethrows any error thrown by the `body` closure.
+    /// - Note: The iteration order is not guaranteed.
     func forEachAsync(_ body: (Key, Value) async throws -> Void) async rethrows
     {
         for (key, value) in self {

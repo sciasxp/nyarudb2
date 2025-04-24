@@ -8,17 +8,18 @@ let package = Package(
         .library(
             name: "NyaruDB2",
             targets: ["NyaruDB2"]),
+        .executable(name: "QuickStartRunner", targets: ["QuickStartRunner"]),
     ],
     targets: [
         .target(
             name: "NyaruDB2",
             path: "Sources/NyaruDB2",
             swiftSettings: [
-                            .unsafeFlags(["-warnings-as-errors"]), // Trata warnings como erros
-                            .define("IOS15_8_OR_LATER") // Define um flag para versão mínima
+                            .unsafeFlags(["-warnings-as-errors"]), 
+                            .define("IOS15_8_OR_LATER") 
                         ],
             linkerSettings: [
-                .linkedLibrary("z"),  // Necessário para GZIP
+                .linkedLibrary("z"),
                 .linkedFramework("Compression", .when(platforms: [.iOS]))
             ]
         ),
@@ -28,7 +29,7 @@ let package = Package(
             path: "Sources/Benchmark"
         ),
         .executableTarget(
-            name: "QuickStart",
+            name: "QuickStartRunner",
             dependencies: ["NyaruDB2"],
             path: "Sources/QuickStart"
         ),

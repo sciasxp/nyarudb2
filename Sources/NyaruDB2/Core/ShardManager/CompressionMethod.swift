@@ -2,6 +2,15 @@ import Compression
 import Foundation
 import zlib
 
+/// An enumeration representing the available compression methods for data storage or transmission.
+/// 
+/// - `none`: No compression is applied.
+/// - `gzip`: Uses the Gzip compression algorithm.
+/// - `lzfse`: Uses the LZFSE compression algorithm, optimized for speed and compression ratio.
+/// - `lz4`: Uses the LZ4 compression algorithm, optimized for very fast compression and decompression.
+///
+/// This enum conforms to `String`, `CaseIterable`, and `Codable` protocols, allowing it to be
+/// represented as a string, iterated over all cases, and encoded/decoded.
 public enum CompressionMethod: String, CaseIterable, Codable {
     case none
     case gzip
@@ -9,6 +18,12 @@ public enum CompressionMethod: String, CaseIterable, Codable {
     case lz4
 }
 
+/// An enumeration representing errors that can occur during compression or decompression operations.
+///
+/// - `compressionFailed`: Indicates that the compression process failed.
+/// - `decompressionFailed`: Indicates that the decompression process failed.
+/// - `unsupportedMethod`: Indicates that the specified compression method is not supported.
+/// - `zlibError(code: Int)`: Represents an error returned by the zlib library, with an associated error code.
 public enum CompressionError: Error {
     case compressionFailed
     case decompressionFailed
@@ -16,8 +31,13 @@ public enum CompressionError: Error {
     case zlibError(code: Int)
 }
 
-// MARK: - Funções Públicas
-
+/// Compresses the given data using the specified compression method.
+///
+/// - Parameters:
+///   - data: The data to be compressed.
+///   - method: The compression method to use.
+/// - Throws: An error if the compression process fails.
+/// - Returns: The compressed data.
 public func compressData(_ data: Data, method: CompressionMethod) throws -> Data
 {
     guard !data.isEmpty else { return data }
@@ -33,6 +53,13 @@ public func compressData(_ data: Data, method: CompressionMethod) throws -> Data
     }
 }
 
+/// Decompresses the given data using the specified compression method.
+///
+/// - Parameters:
+///   - data: The compressed data to be decompressed.
+///   - method: The compression method used to compress the data.
+/// - Returns: The decompressed data.
+/// - Throws: An error if the decompression process fails.
 public func decompressData(_ data: Data, method: CompressionMethod) throws
     -> Data
 {
@@ -49,12 +76,17 @@ public func decompressData(_ data: Data, method: CompressionMethod) throws
     }
 }
 
-// MARK: - Helpers com Compression Framework (LZFSE, LZ4)
 
+/// Compresses the given data using the specified compression algorithm.
+///
+/// - Parameters:
+///   - data: The data to be compressed.
+///   - algorithm: The compression algorithm to use.
+/// - Returns: A `Data` object containing the compressed data.
+/// - Throws: An error if the compression process fails.
 private func compress(data: Data, algorithm: compression_algorithm) throws
     -> Data
 {
-    // Aloca um buffer de destino com tamanho estimado
     let dstBufferSize = data.count + (data.count / 10) + 100
     let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(
         capacity: dstBufferSize
@@ -123,6 +155,13 @@ private func compress(data: Data, algorithm: compression_algorithm) throws
     return outputData
 }
 
+/// Decompresses the given data using the specified compression algorithm.
+///
+/// - Parameters:
+///   - data: The compressed data to be decompressed.
+///   - algorithm: The compression algorithm to use for decompression.
+/// - Returns: The decompressed data.
+/// - Throws: An error if the decompression process fails.
 private func decompress(data: Data, algorithm: compression_algorithm) throws
     -> Data
 {
@@ -190,8 +229,12 @@ private func decompress(data: Data, algorithm: compression_algorithm) throws
     return outputData
 }
 
-// MARK: - Implementação GZIP utilizando libz
 
+/// Compresses the given data using the Gzip compression algorithm.
+///
+/// - Parameter data: The data to be compressed.
+/// - Returns: A `Data` object containing the compressed data.
+/// - Throws: An error if the compression process fails.
 private func gzipCompress(data: Data) throws -> Data {
     var stream = z_stream()
     var status: Int32 = deflateInit2_(
@@ -210,7 +253,6 @@ private func gzipCompress(data: Data) throws -> Data {
     defer { deflateEnd(&stream) }
 
     var outputData = Data()
-    // Define um buffer para os chunks
     let chunkSize = 4096
     var chunk = [UInt8](repeating: 0, count: chunkSize)
 
@@ -253,6 +295,11 @@ private func gzipCompress(data: Data) throws -> Data {
     return outputData
 }
 
+/// Decompresses the given data using the Gzip compression method.
+/// 
+/// - Parameter data: The compressed data to be decompressed.
+/// - Returns: The decompressed data.
+/// - Throws: An error if the decompression process fails.
 private func gzipDecompress(data: Data) throws -> Data {
     var stream = z_stream()
     var status: Int32 = inflateInit2_(
