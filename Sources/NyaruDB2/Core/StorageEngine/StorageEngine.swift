@@ -151,7 +151,9 @@ public actor StorageEngine {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    try await activeShardManagers[collection]?
+                    let shardManager = try await getOrCreateShardManager(for: collection)
+                    
+                    try await shardManager
                         .allShards()
                         .asyncForEach { shard in
                             try await shard.loadDocuments()
